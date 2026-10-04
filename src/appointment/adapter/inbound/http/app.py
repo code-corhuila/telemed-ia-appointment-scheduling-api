@@ -1,8 +1,12 @@
 """FastAPI application factory.
 
-The composition root wires every adapter here: middlewares, error
-handlers, routers and the use cases they depend on.
+Two modes:
+- Tests pass an explicit `Container` with fakes (`create_app(container=...)`).
+- Runtime passes a `lifespan` that builds the real container and manages
+  the database pool (`create_app(lifespan=...)`).
 """
+
+from typing import Any
 
 from fastapi import FastAPI
 
@@ -14,17 +18,11 @@ from appointment.adapter.inbound.http.routers.appointments import router as appo
 from appointment.config.settings import get_settings
 
 
-def _default_container() -> Container:
-    """Temporary in-memory container.
-
-    Until the Postgres adapter lands (next PR), endpoints respond only
-    after receiving a fake repository. Exposed so tests can build their
-    own container and pass it to `create_app(container=...)`.
-    """
-    raise RuntimeError("create_app requires an explicit container")
-
-
-def create_app(*, container: Container | None = None) -> FastAPI:
+def create_app(
+    *,
+    container: Container | None = None,
+    lifespan: Any = None,
+) -> FastAPI:
     settings = get_settings()
     docs_enabled = settings.environment != "production"
 
@@ -34,16 +32,14 @@ def create_app(*, container: Container | None = None) -> FastAPI:
         docs_url="/docs" if docs_enabled else None,
         redoc_url=None,
         openapi_url="/openapi.json" if docs_enabled else None,
+        lifespan=lifespan,
     )
 
     app.add_middleware(CorrelationMiddleware)
 
-    if container is None:
-        raise RuntimeError(
-            "create_app requires a Container; the default one is not yet wired"
-        )
-    app.state.container = container
-    app.state.idempotency = InMemoryIdempotencyStore()
+    if container is not None:
+        app.state.container = container
+        app.state.idempotency = InMemoryIdempotencyStore()
 
     register_error_handlers(app)
 
