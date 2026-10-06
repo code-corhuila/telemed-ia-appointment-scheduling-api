@@ -1,0 +1,29 @@
+name: telemed-ia-appointment-scheduling-api
+
+services:
+  appointment-scheduling-api:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    image: telemed-ia-appointment-scheduling-api:local
+    container_name: appointment-scheduling-api
+    restart: unless-stopped
+    environment:
+      ENVIRONMENT: development
+      SERVER_PORT: "8080"
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: ${PG_DATABASE:-telemed_ia}
+      DB_USER: ${APPOINTMENT_SCHEDULING_APP_USER:-appointment_scheduling_app}
+      DB_PASSWORD: ${APPOINTMENT_SCHEDULING_APP_PASSWORD:?required}
+      DB_SCHEMA: appointment_scheduling
+      JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY:?required}
+    expose:
+      - "8080"
+    networks:
+      - platform
+
+networks:
+  platform:
+    external: true
+    name: platform
