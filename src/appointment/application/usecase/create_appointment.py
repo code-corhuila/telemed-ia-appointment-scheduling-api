@@ -50,12 +50,14 @@ class CreateAppointmentUseCaseImpl:
 
         saved = await self._repository.save(appointment)
 
+        if saved.id is None:
+            raise RuntimeError("saved appointment has no id")
+
         await self._publisher.publish(
             AppointmentCreated(
-                appointment_id=saved.id or 0,
+                appointment_id=saved.id,
                 patient_id=saved.patient_id,
                 professional_id=saved.professional_id,
-                start=saved.start,
                 occurred_at=datetime.now(UTC),
             )
         )

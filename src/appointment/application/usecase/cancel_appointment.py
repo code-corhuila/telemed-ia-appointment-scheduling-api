@@ -8,6 +8,7 @@ Flow:
 """
 
 from datetime import UTC, datetime
+from uuid import UUID
 
 from appointment.application.dto.commands import CancelAppointmentCommand
 from appointment.application.dto.responses import AppointmentResponse
@@ -32,7 +33,7 @@ class CancelAppointmentUseCaseImpl:
     async def execute(
         self,
         cmd: CancelAppointmentCommand,
-        actor_id: int,
+        actor_id: UUID,
     ) -> AppointmentResponse:
         appointment = await self._repository.find_by_id(cmd.appointment_id)
         if appointment is None:
@@ -41,12 +42,15 @@ class CancelAppointmentUseCaseImpl:
         appointment.cancel(reason=cmd.reason)
         saved = await self._repository.update(appointment)
 
+        if saved.id is None:
+            raise RuntimeError("saved appointment has no id")
+
         await self._publisher.publish(
             AppointmentCancelled(
-                appointment_id=saved.id or 0,
+                appointment_id=saved.id,
                 patient_id=saved.patient_id,
                 professional_id=saved.professional_id,
-                cancelled_by=str(actor_id),
+                cancelled_by=actor_id,
                 occurred_at=datetime.now(UTC),
             )
         )
