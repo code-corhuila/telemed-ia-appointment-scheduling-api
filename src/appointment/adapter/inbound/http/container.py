@@ -1,7 +1,7 @@
 """Composition root of the HTTP adapter.
 
 Holds the use cases so routers can inject them via FastAPI dependencies.
-The concrete instances are wired in `app.create_app()`.
+The concrete instances are wired in the application's lifespan.
 """
 
 from dataclasses import dataclass
@@ -11,6 +11,9 @@ from appointment.application.usecase.cancel_appointment import (
 )
 from appointment.application.usecase.create_appointment import (
     CreateAppointmentUseCaseImpl,
+)
+from appointment.application.usecase.get_appointment import (
+    GetAppointmentUseCaseImpl,
 )
 from appointment.application.usecase.list_appointments import (
     ListPatientAppointmentsUseCaseImpl,
@@ -32,3 +35,4 @@ class Container:
     update_status: UpdateAppointmentStatusUseCaseImpl
     list_patient: ListPatientAppointmentsUseCaseImpl
     list_professional: ListProfessionalAppointmentsUseCaseImpl
+    get_by_id: GetAppointmentUseCaseImpl

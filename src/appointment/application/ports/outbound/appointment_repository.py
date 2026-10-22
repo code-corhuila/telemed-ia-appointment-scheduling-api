@@ -2,6 +2,7 @@
 
 from datetime import datetime
 from typing import Protocol
+from uuid import UUID
 
 from appointment.domain.model.appointment import Appointment
 
@@ -21,13 +22,13 @@ class AppointmentRepository(Protocol):
         """Persist changes to an existing appointment."""
         ...
 
-    async def find_by_id(self, appointment_id: int) -> Appointment | None:
+    async def find_by_id(self, appointment_id: UUID) -> Appointment | None:
         """Return the appointment with the given id, or None."""
         ...
 
     async def find_by_patient(
         self,
-        patient_id: int,
+        patient_id: UUID,
         *,
         offset: int,
         limit: int,
@@ -37,7 +38,7 @@ class AppointmentRepository(Protocol):
 
     async def find_by_professional(
         self,
-        professional_id: int,
+        professional_id: UUID,
         *,
         offset: int,
         limit: int,
@@ -47,7 +48,7 @@ class AppointmentRepository(Protocol):
 
     async def find_active_overlapping(
         self,
-        professional_id: int,
+        professional_id: UUID,
         start: datetime,
         end: datetime,
     ) -> list[Appointment]:

@@ -39,9 +39,11 @@ class UpdateAppointmentStatusUseCaseImpl:
             case AppointmentStatus.COMPLETED:
                 appointment.mark_completed()
                 saved = await self._repository.update(appointment)
+                if saved.id is None:
+                    raise RuntimeError("saved appointment has no id")
                 await self._publisher.publish(
                     AppointmentCompleted(
-                        appointment_id=saved.id or 0,
+                        appointment_id=saved.id,
                         patient_id=saved.patient_id,
                         professional_id=saved.professional_id,
                         occurred_at=datetime.now(UTC),
