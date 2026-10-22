@@ -2,6 +2,13 @@ from datetime import UTC, datetime, timedelta
 
 from fastapi.testclient import TestClient
 
+from uuid import uuid4 as _uuid4
+
+PATIENT_UUID = str(_uuid4())
+PROFESSIONAL_UUID = str(_uuid4())
+ADMIN_UUID = str(_uuid4())
+
+
 
 def _future(h: int) -> str:
     return (datetime.now(UTC) + timedelta(hours=h)).isoformat()
@@ -12,13 +19,13 @@ def _auth(token: str) -> dict[str, str]:
 
 
 def test_create_appointment_returns_201(client: TestClient, make_token) -> None:
-    token = make_token("1", "PATIENT")
+    token = make_token(PATIENT_UUID, "PATIENT")
     response = client.post(
         "/api/appointments/",
         headers={**_auth(token), "Idempotency-Key": "test-key-12345678"},
         json={
-            "patientId": 1,
-            "professionalId": 2,
+            "patientId": PATIENT_UUID,
+            "professionalId": PROFESSIONAL_UUID,
             "start": _future(24),
             "end": _future(25),
         },
@@ -26,17 +33,17 @@ def test_create_appointment_returns_201(client: TestClient, make_token) -> None:
     assert response.status_code == 201
     body = response.json()
     assert body["status"] == "CONFIRMED"
-    assert body["patientId"] == 1
+    assert body["patientId"] == PATIENT_UUID
 
 
 def test_create_without_idempotency_key_returns_400(client: TestClient, make_token) -> None:
-    token = make_token("1", "PATIENT")
+    token = make_token(PATIENT_UUID, "PATIENT")
     response = client.post(
         "/api/appointments/",
         headers=_auth(token),
         json={
-            "patientId": 1,
-            "professionalId": 2,
+            "patientId": PATIENT_UUID,
+            "professionalId": PROFESSIONAL_UUID,
             "start": _future(24),
             "end": _future(25),
         },
@@ -45,11 +52,11 @@ def test_create_without_idempotency_key_returns_400(client: TestClient, make_tok
 
 
 def test_create_is_idempotent(client: TestClient, make_token) -> None:
-    token = make_token("1", "PATIENT")
+    token = make_token(PATIENT_UUID, "PATIENT")
     headers = {**_auth(token), "Idempotency-Key": "same-key-12345678"}
     body = {
-        "patientId": 1,
-        "professionalId": 2,
+        "patientId": PATIENT_UUID,
+        "professionalId": PROFESSIONAL_UUID,
         "start": _future(24),
         "end": _future(25),
     }
@@ -61,13 +68,13 @@ def test_create_is_idempotent(client: TestClient, make_token) -> None:
 
 
 def test_cancel_and_list(client: TestClient, make_token) -> None:
-    token = make_token("1", "PATIENT")
+    token = make_token(PATIENT_UUID, "PATIENT")
     created = client.post(
         "/api/appointments/",
         headers={**_auth(token), "Idempotency-Key": "cancel-test-12345678"},
         json={
-            "patientId": 1,
-            "professionalId": 2,
+            "patientId": PATIENT_UUID,
+            "professionalId": PROFESSIONAL_UUID,
             "start": _future(24),
             "end": _future(25),
         },
@@ -82,7 +89,7 @@ def test_cancel_and_list(client: TestClient, make_token) -> None:
     assert cancelled.json()["status"] == "CANCELLED"
     assert cancelled.json()["cancellationReason"] == "no longer available"
 
-    listing = client.get("/api/appointments/patient/1", headers=_auth(token))
+    listing = client.get(f"/api/appointments/patient/{PATIENT_UUID}", headers=_auth(token))
     assert listing.status_code == 200
     body = listing.json()
     assert "data" in body and "meta" in body
@@ -90,7 +97,7 @@ def test_cancel_and_list(client: TestClient, make_token) -> None:
 
 
 def test_invalid_json_returns_400_envelope(client: TestClient, make_token) -> None:
-    token = make_token("1", "PATIENT")
+    token = make_token(PATIENT_UUID, "PATIENT")
     response = client.post(
         "/api/appointments/",
         headers={

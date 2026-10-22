@@ -17,6 +17,9 @@ from appointment.application.usecase.cancel_appointment import (
 from appointment.application.usecase.create_appointment import (
     CreateAppointmentUseCaseImpl,
 )
+from appointment.application.usecase.get_appointment import (
+    GetAppointmentUseCaseImpl,
+)
 from appointment.application.usecase.list_appointments import (
     ListPatientAppointmentsUseCaseImpl,
     ListProfessionalAppointmentsUseCaseImpl,
@@ -59,6 +62,7 @@ def container() -> Container:
         update_status=UpdateAppointmentStatusUseCaseImpl(repo, publisher),
         list_patient=ListPatientAppointmentsUseCaseImpl(repo),
         list_professional=ListProfessionalAppointmentsUseCaseImpl(repo),
+            get_by_id=GetAppointmentUseCaseImpl(repo),
     )
 
 
