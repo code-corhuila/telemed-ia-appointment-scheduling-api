@@ -53,9 +53,12 @@ class RescheduleAppointmentUseCaseImpl:
 
         saved = await self._repository.update(appointment)
 
+        if saved.id is None:
+            raise RuntimeError("saved appointment has no id")
+
         await self._publisher.publish(
             AppointmentRescheduled(
-                appointment_id=saved.id or 0,
+                appointment_id=saved.id,
                 patient_id=saved.patient_id,
                 professional_id=saved.professional_id,
                 previous_start=previous_start,
