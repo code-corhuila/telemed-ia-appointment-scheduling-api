@@ -5,45 +5,38 @@ UTC, which Pydantic does natively for `datetime` fields.
 """
 
 from datetime import datetime
+from uuid import UUID
 
-from appointment.application.dto.base import CamelCaseModel
-from appointment.domain.model.appointment import Appointment
-from appointment.domain.model.appointment_status import AppointmentStatus
+from pydantic import BaseModel, ConfigDict, Field
 
 
-class AppointmentResponse(CamelCaseModel):
-    id: int
-    patient_id: int
-    professional_id: int
+class AppointmentResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    id: UUID
+    patient_id: UUID = Field(alias="patientId")
+    professional_id: UUID = Field(alias="professionalId")
+    preconsultation_summary_id: UUID | None = Field(default=None, alias="preconsultationSummaryId")
+    post_summary_id: UUID | None = Field(default=None, alias="postSummaryId")
     start: datetime
     end: datetime
-    status: AppointmentStatus
-    preconsultation_summary_id: int | None = None
-    post_summary_id: int | None = None
-    cancellation_reason: str | None = None
-    created_at: datetime
-    updated_at: datetime
+    status: str
+    cancellation_reason: str | None = Field(default=None, alias="cancellationReason")
+    created_at: datetime = Field(alias="createdAt")
+    updated_at: datetime = Field(alias="updatedAt")
 
     @classmethod
-    def from_domain(cls, appointment: Appointment) -> "AppointmentResponse":
-        if appointment.id is None:
-            raise ValueError("cannot build a response from a non-persisted appointment")
+    def from_domain(cls, appointment) -> "AppointmentResponse":
         return cls(
             id=appointment.id,
-            patient_id=appointment.patient_id,
-            professional_id=appointment.professional_id,
+            patientId=appointment.patient_id,
+            professionalId=appointment.professional_id,
+            preconsultationSummaryId=appointment.preconsultation_summary_id,
+            postSummaryId=appointment.post_summary_id,
             start=appointment.start,
             end=appointment.end,
-            status=appointment.status,
-            preconsultation_summary_id=appointment.preconsultation_summary_id,
-            post_summary_id=appointment.post_summary_id,
-            cancellation_reason=appointment.cancellation_reason,
-            created_at=appointment.created_at,
-            updated_at=appointment.updated_at,
+            status=appointment.status.value,
+            cancellationReason=appointment.cancellation_reason,
+            createdAt=appointment.created_at,
+            updatedAt=appointment.updated_at,
         )
-
-
-class AvailabilityResponse(CamelCaseModel):
-    professional_id: int
-    start: datetime
-    end: datetime
