@@ -17,6 +17,16 @@ from appointment.domain.model.appointment_status import AppointmentStatus
 from tests.fakes.in_memory_appointment_repository import InMemoryAppointmentRepository
 from tests.fakes.recording_event_publisher import RecordingEventPublisher
 
+from uuid import uuid4 as _uuid4
+from appointment.application.events.appointment_events import AppointmentRescheduled
+
+PATIENT_ID = _uuid4()
+PROFESSIONAL_ID = _uuid4()
+OTHER_PATIENT_ID = _uuid4()
+OTHER_PROFESSIONAL_ID = _uuid4()
+
+
+
 
 def _future(h: int) -> datetime:
     return datetime.now(UTC) + timedelta(hours=h)
@@ -29,7 +39,7 @@ async def test_reschedule_transitions_and_publishes() -> None:
     create = CreateAppointmentUseCaseImpl(repo, publisher)
     response = await create.execute(
         CreateAppointmentCommand(
-            patient_id=1, professional_id=2, start=_future(24), end=_future(25)
+            patient_id=PATIENT_ID, professional_id=PROFESSIONAL_ID, start=_future(24), end=_future(25)
         )
     )
 
@@ -43,7 +53,7 @@ async def test_reschedule_transitions_and_publishes() -> None:
     )
 
     assert updated.status == AppointmentStatus.RESCHEDULED
-    assert publisher.events[-1].name == "AppointmentRescheduled"
+    assert isinstance(publisher.events[-1], AppointmentRescheduled)
 
 
 @pytest.mark.asyncio
@@ -53,12 +63,12 @@ async def test_reschedule_rejects_overlap() -> None:
     create = CreateAppointmentUseCaseImpl(repo, publisher)
     a = await create.execute(
         CreateAppointmentCommand(
-            patient_id=1, professional_id=2, start=_future(24), end=_future(25)
+            patient_id=PATIENT_ID, professional_id=PROFESSIONAL_ID, start=_future(24), end=_future(25)
         )
     )
     await create.execute(
         CreateAppointmentCommand(
-            patient_id=3, professional_id=2, start=_future(48), end=_future(49)
+            patient_id=OTHER_PATIENT_ID, professional_id=PROFESSIONAL_ID, start=_future(48), end=_future(49)
         )
     )
 

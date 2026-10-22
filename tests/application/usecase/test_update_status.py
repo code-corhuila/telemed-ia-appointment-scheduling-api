@@ -17,6 +17,16 @@ from appointment.domain.model.appointment_status import AppointmentStatus
 from tests.fakes.in_memory_appointment_repository import InMemoryAppointmentRepository
 from tests.fakes.recording_event_publisher import RecordingEventPublisher
 
+from uuid import uuid4 as _uuid4
+from appointment.application.events.appointment_events import AppointmentCompleted
+
+PATIENT_ID = _uuid4()
+PROFESSIONAL_ID = _uuid4()
+OTHER_PATIENT_ID = _uuid4()
+OTHER_PROFESSIONAL_ID = _uuid4()
+
+
+
 
 def _future(h: int) -> datetime:
     return datetime.now(UTC) + timedelta(hours=h)
@@ -29,7 +39,7 @@ async def test_mark_completed_publishes_event() -> None:
     create = CreateAppointmentUseCaseImpl(repo, publisher)
     a = await create.execute(
         CreateAppointmentCommand(
-            patient_id=1, professional_id=2, start=_future(24), end=_future(25)
+            patient_id=PATIENT_ID, professional_id=PROFESSIONAL_ID, start=_future(24), end=_future(25)
         )
     )
 
@@ -40,7 +50,7 @@ async def test_mark_completed_publishes_event() -> None:
         )
     )
     assert updated.status == AppointmentStatus.COMPLETED
-    assert publisher.events[-1].name == "AppointmentCompleted"
+    assert isinstance(publisher.events[-1], AppointmentCompleted)
 
 
 @pytest.mark.asyncio
@@ -50,7 +60,7 @@ async def test_cancel_via_status_endpoint_is_rejected() -> None:
     create = CreateAppointmentUseCaseImpl(repo, publisher)
     a = await create.execute(
         CreateAppointmentCommand(
-            patient_id=1, professional_id=2, start=_future(24), end=_future(25)
+            patient_id=PATIENT_ID, professional_id=PROFESSIONAL_ID, start=_future(24), end=_future(25)
         )
     )
 
