@@ -26,6 +26,9 @@ from appointment.application.usecase.cancel_appointment import (
 from appointment.application.usecase.create_appointment import (
     CreateAppointmentUseCaseImpl,
 )
+from appointment.application.usecase.get_appointment import (
+    GetAppointmentUseCaseImpl,
+)
 from appointment.application.usecase.list_appointments import (
     ListPatientAppointmentsUseCaseImpl,
     ListProfessionalAppointmentsUseCaseImpl,
@@ -59,6 +62,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             update_status=UpdateAppointmentStatusUseCaseImpl(appointment_repo, publisher),
             list_patient=ListPatientAppointmentsUseCaseImpl(appointment_repo),
             list_professional=ListProfessionalAppointmentsUseCaseImpl(appointment_repo),
+            get_by_id=GetAppointmentUseCaseImpl(appointment_repo),
         )
         app.state.idempotency = InMemoryIdempotencyStore()
         yield
