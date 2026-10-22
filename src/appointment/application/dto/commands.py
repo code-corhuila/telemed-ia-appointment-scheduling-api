@@ -1,72 +1,65 @@
 """Input DTOs of the use cases.
 
-Commands only enforce *shape* validation (positive ids, non-blank strings).
+Commands only enforce *shape* validation (non-nil UUIDs, non-blank strings).
 Business rules (end > start, future start, state transitions) stay in the
 domain, not here.
 """
 
 from datetime import datetime
+from uuid import UUID
 
-from pydantic import field_validator
+from pydantic import BaseModel, field_validator
 
-from appointment.application.dto.base import CamelCaseModel
 from appointment.domain.model.appointment_status import AppointmentStatus
 
 
-class CreateAppointmentCommand(CamelCaseModel):
-    patient_id: int
-    professional_id: int
+class CreateAppointmentCommand(BaseModel):
+    patient_id: UUID
+    professional_id: UUID
     start: datetime
     end: datetime
-    preconsultation_summary_id: int | None = None
+    preconsultation_summary_id: UUID | None = None
 
     @field_validator("patient_id", "professional_id")
     @classmethod
-    def _positive_ids(cls, v: int) -> int:
-        if v <= 0:
-            raise ValueError("must be positive")
+    def _non_nil_uuid(cls, v: UUID) -> UUID:
+        if v.int == 0:
+            raise ValueError("uuid cannot be nil")
         return v
 
 
-class CancelAppointmentCommand(CamelCaseModel):
-    appointment_id: int
+class CancelAppointmentCommand(BaseModel):
+    appointment_id: UUID
     reason: str
 
     @field_validator("appointment_id")
     @classmethod
-    def _positive_id(cls, v: int) -> int:
-        if v <= 0:
-            raise ValueError("must be positive")
-        return v
-
-    @field_validator("reason")
-    @classmethod
-    def _reason_not_blank(cls, v: str) -> str:
-        if not v.strip():
-            raise ValueError("reason must not be blank")
+    def _non_nil_uuid(cls, v: UUID) -> UUID:
+        if v.int == 0:
+            raise ValueError("uuid cannot be nil")
         return v
 
 
-class RescheduleAppointmentCommand(CamelCaseModel):
-    appointment_id: int
+class RescheduleAppointmentCommand(BaseModel):
+    appointment_id: UUID
     new_start: datetime
     new_end: datetime
 
     @field_validator("appointment_id")
     @classmethod
-    def _positive_id(cls, v: int) -> int:
-        if v <= 0:
-            raise ValueError("must be positive")
+    def _non_nil_uuid(cls, v: UUID) -> UUID:
+        if v.int == 0:
+            raise ValueError("uuid cannot be nil")
         return v
 
 
-class UpdateAppointmentStatusCommand(CamelCaseModel):
-    appointment_id: int
+class UpdateAppointmentStatusCommand(BaseModel):
+    appointment_id: UUID
     status: AppointmentStatus
 
     @field_validator("appointment_id")
     @classmethod
-    def _positive_id(cls, v: int) -> int:
-        if v <= 0:
-            raise ValueError("must be positive")
+    def _non_nil_uuid(cls, v: UUID) -> UUID:
+        if v.int == 0:
+            raise ValueError("uuid cannot be nil")
         return v
