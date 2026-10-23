@@ -18,7 +18,7 @@ from appointment.application.ports.outbound.appointment_repository import (
 )
 from appointment.application.ports.outbound.event_publisher import EventPublisher
 from appointment.application.usecase._mappers import to_response
-from appointment.domain.exception import AppointmentNotFound, SlotUnavailable
+from appointment.domain.exception import AppointmentNotFound, SlotUnavailable, PatientSlotUnavailable
 
 
 class RescheduleAppointmentUseCaseImpl:
@@ -40,15 +40,24 @@ class RescheduleAppointmentUseCaseImpl:
         previous_start = appointment.start
         appointment.reschedule(new_start=cmd.new_start, new_end=cmd.new_end)
 
-        overlaps = await self._repository.find_active_overlapping(
+        prof_overlaps = await self._repository.find_active_overlapping(
             appointment.professional_id, appointment.start, appointment.end
         )
         # The appointment itself may appear in the result if the repo does not
         # exclude it. Filter out by id.
-        overlaps = [o for o in overlaps if o.id != appointment.id]
-        if overlaps:
+        prof_overlaps = [o for o in prof_overlaps if o.id != appointment.id]
+        if prof_overlaps:
             raise SlotUnavailable(
                 "another active appointment occupies the requested time slot"
+            )
+
+        patient_overlaps = await self._repository.find_active_overlapping_by_patient(
+            appointment.patient_id, appointment.start, appointment.end
+        )
+        patient_overlaps = [o for o in patient_overlaps if o.id != appointment.id]
+        if patient_overlaps:
+            raise PatientSlotUnavailable(
+                "the patient already has another active appointment at this time"
             )
 
         saved = await self._repository.update(appointment)

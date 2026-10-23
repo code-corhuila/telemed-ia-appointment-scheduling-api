@@ -117,3 +117,39 @@ def test_unknown_route_returns_404_with_envelope(client: TestClient) -> None:
     assert response.status_code == 404
     assert response.json()["error"] == "NOT_FOUND"
     assert "traceId" in response.json()
+
+def test_create_patient_conflict_returns_409_with_code(client, make_token):
+    patient_uuid = str(_uuid4())
+    prof1_uuid = str(_uuid4())
+    prof2_uuid = str(_uuid4())
+    token = make_token(patient_uuid, "PATIENT")
+    headers = {**_auth(token), "Idempotency-Key": "conflict-test-12345"}
+
+    # Primera cita
+    response1 = client.post(
+        "/api/appointments/",
+        headers=headers,
+        json={
+            "patientId": patient_uuid,
+            "professionalId": prof1_uuid,
+            "start": _future(24),
+            "end": _future(25),
+        },
+    )
+    assert response1.status_code == 201
+
+    # Segunda cita, mismo paciente, distinto profesional, solapada
+    headers["Idempotency-Key"] = "conflict-test-67890"
+    response2 = client.post(
+        "/api/appointments/",
+        headers=headers,
+        json={
+            "patientId": patient_uuid,
+            "professionalId": prof2_uuid,
+            "start": _future(24.5),
+            "end": _future(25.5),
+        },
+    )
+    
+    assert response2.status_code == 409
+    assert response2.json()["error"] == "PATIENT_SLOT_CONFLICT"
