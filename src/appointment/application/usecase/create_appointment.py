@@ -18,7 +18,7 @@ from appointment.application.ports.outbound.appointment_repository import (
 )
 from appointment.application.ports.outbound.event_publisher import EventPublisher
 from appointment.application.usecase._mappers import to_response
-from appointment.domain.exception import SlotUnavailable
+from appointment.domain.exception import SlotUnavailable, PatientSlotUnavailable
 from appointment.domain.model.appointment import Appointment
 
 
@@ -40,12 +40,20 @@ class CreateAppointmentUseCaseImpl:
             preconsultation_summary_id=cmd.preconsultation_summary_id,
         )
 
-        overlaps = await self._repository.find_active_overlapping(
+        prof_overlaps = await self._repository.find_active_overlapping(
             cmd.professional_id, appointment.start, appointment.end
         )
-        if overlaps:
+        if prof_overlaps:
             raise SlotUnavailable(
                 "another active appointment occupies the requested time slot"
+            )
+
+        patient_overlaps = await self._repository.find_active_overlapping_by_patient(
+            cmd.patient_id, appointment.start, appointment.end
+        )
+        if patient_overlaps:
+            raise PatientSlotUnavailable(
+                "the patient already has another active appointment at this time"
             )
 
         saved = await self._repository.save(appointment)

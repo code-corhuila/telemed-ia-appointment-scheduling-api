@@ -26,7 +26,11 @@ class InvalidStatusTransition(DomainException):
 
 
 class SlotUnavailable(DomainException):
-    """Raised when the requested time slot conflicts with another appointment."""
+    """Raised when the requested time slot conflicts with another appointment for the professional."""
+
+
+class PatientSlotUnavailable(DomainException):
+    """Raised when the requested time slot conflicts with another appointment for the patient."""
 
 
 class UnauthorizedOperation(DomainException):

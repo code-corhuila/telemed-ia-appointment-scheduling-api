@@ -46,6 +46,15 @@ class AppointmentRepository(Protocol):
         """Return (page, total) of active appointments for a professional."""
         ...
 
+    async def find_active_overlapping_by_patient(
+        self,
+        patient_id: UUID,
+        start: datetime,
+        end: datetime,
+    ) -> list[Appointment]:
+        """Return active appointments overlapping the time range for the patient."""
+        ...
+
     async def find_active_overlapping(
         self,
         professional_id: UUID,

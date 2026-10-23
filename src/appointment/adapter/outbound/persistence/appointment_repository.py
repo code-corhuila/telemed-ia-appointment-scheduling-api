@@ -32,10 +32,11 @@ class PostgresAppointmentRepository:
                       post_summary_id, start_time, end_time, status,
                       cancellation_reason, created_at, updated_at, deleted_at
         """
-        row = await self._pool.fetchrow(
-            sql,
-            appointment.patient_id,
-            appointment.professional_id,
+        try:
+            row = await self._pool.fetchrow(
+                sql,
+                appointment.patient_id,
+                appointment.professional_id,
             appointment.preconsultation_summary_id,
             appointment.post_summary_id,
             appointment.start,
@@ -68,20 +69,23 @@ class PostgresAppointmentRepository:
                       post_summary_id, start_time, end_time, status,
                       cancellation_reason, created_at, updated_at, deleted_at
         """
-        row = await self._pool.fetchrow(
-            sql,
-            appointment.id,
-            appointment.patient_id,
-            appointment.professional_id,
-            appointment.preconsultation_summary_id,
-            appointment.post_summary_id,
-            appointment.start,
-            appointment.end,
-            appointment.status.value,
-            appointment.cancellation_reason,
-            appointment.updated_at,
-            appointment.deleted_at,
-        )
+        try:
+            row = await self._pool.fetchrow(
+                sql,
+                appointment.id,
+                appointment.patient_id,
+                appointment.professional_id,
+                appointment.preconsultation_summary_id,
+                appointment.post_summary_id,
+                appointment.start,
+                appointment.end,
+                appointment.status.value,
+                appointment.cancellation_reason,
+                appointment.updated_at,
+                appointment.deleted_at,
+            )
+        except asyncpg.exceptions.ExclusionViolationError as exc:
+            raise self._map_exclusion_violation(exc) from exc
         if row is None:
             raise ValueError(f"appointment {appointment.id} not found")
         return row_to_appointment(row)
@@ -122,7 +126,7 @@ class PostgresAppointmentRepository:
         return [row_to_appointment(r) for r in rows], int(total or 0)
 
     async def find_by_professional(
-        self, professional_id: int, *, offset: int, limit: int
+        self, professional_id: UUID, *, offset: int, limit: int
     ) -> tuple[list[Appointment], int]:
         sql = f"""
             SELECT id, patient_id, professional_id, preconsultation_summary_id,
@@ -141,9 +145,39 @@ class PostgresAppointmentRepository:
         total = await self._pool.fetchval(count_sql, professional_id)
         return [row_to_appointment(r) for r in rows], int(total or 0)
 
+
+    def _map_exclusion_violation(self, exc: asyncpg.exceptions.ExclusionViolationError) -> Exception:
+        if "ex_appointments_patient_slot" in str(exc):
+            return PatientSlotUnavailable("patient already has an overlapping appointment")
+        if "ex_appointments_professional_slot" in str(exc):
+            return SlotUnavailable("professional already has an overlapping appointment")
+        return exc
+
+    async def find_active_overlapping_by_patient(
+        self,
+        patient_id: UUID,
+        start: datetime,
+        end: datetime,
+    ) -> list[Appointment]:
+        sql = f"""
+            SELECT id, patient_id, professional_id, preconsultation_summary_id,
+                   post_summary_id, start_time, end_time, status,
+                   cancellation_reason, created_at, updated_at, deleted_at
+            FROM {self._schema}.appointments
+            WHERE patient_id = $1
+              AND status = ANY($2::text[])
+              AND start_time < $4
+              AND $3 < end_time
+              AND deleted_at IS NULL
+        """
+        rows = await self._pool.fetch(
+            sql, patient_id, list(_ACTIVE_STATUSES), start, end
+        )
+        return [row_to_appointment(r) for r in rows]
+
     async def find_active_overlapping(
         self,
-        professional_id: int,
+        professional_id: UUID,
         start: datetime,
         end: datetime,
     ) -> list[Appointment]:
