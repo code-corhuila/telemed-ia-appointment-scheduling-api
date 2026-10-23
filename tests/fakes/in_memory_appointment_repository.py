@@ -48,6 +48,21 @@ class InMemoryAppointmentRepository:
         total = len(filtered)
         return filtered[offset : offset + limit], total
 
+    async def find_active_overlapping_by_patient(
+        self,
+        patient_id: UUID,
+        start: datetime,
+        end: datetime,
+    ) -> list[Appointment]:
+        return [
+            a
+            for a in self._items.values()
+            if a.patient_id == patient_id
+            and a.status in (AppointmentStatus.CONFIRMED, AppointmentStatus.RESCHEDULED)
+            and a.start < end
+            and start < a.end
+        ]
+
     async def find_active_overlapping(
         self,
         professional_id: UUID,
