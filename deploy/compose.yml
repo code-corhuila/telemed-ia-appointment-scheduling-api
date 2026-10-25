@@ -9,6 +9,7 @@ services:
     container_name: appointment-scheduling-api
     restart: unless-stopped
     environment:
+      RABBITMQ_URL: ${RABBITMQ_URL:-amqp://guest:guest@rabbitmq:5672/}
       ENVIRONMENT: development
       SERVER_PORT: "8080"
       DB_HOST: postgres

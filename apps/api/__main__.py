@@ -13,7 +13,6 @@ from fastapi import FastAPI
 from appointment.adapter.inbound.http.app import create_app
 from appointment.adapter.inbound.http.container import Container
 from appointment.adapter.inbound.http.idempotency import InMemoryIdempotencyStore
-from appointment.adapter.outbound.messaging.noop_publisher import NoOpEventPublisher
 from appointment.adapter.outbound.persistence.appointment_repository import (
     PostgresAppointmentRepository,
 )
@@ -55,12 +54,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # without touching the composition root.
         _availability_repo = PostgresAvailabilityRepository(pool, settings.db_schema)
 
-        publisher = NoOpEventPublisher()
         app.state.container = Container(
-            create=CreateAppointmentUseCaseImpl(appointment_repo, publisher),
-            cancel=CancelAppointmentUseCaseImpl(appointment_repo, publisher),
-            reschedule=RescheduleAppointmentUseCaseImpl(appointment_repo, publisher),
-            update_status=UpdateAppointmentStatusUseCaseImpl(appointment_repo, publisher),
+            create=CreateAppointmentUseCaseImpl(appointment_repo),
+            cancel=CancelAppointmentUseCaseImpl(appointment_repo),
+            reschedule=RescheduleAppointmentUseCaseImpl(appointment_repo),
+            update_status=UpdateAppointmentStatusUseCaseImpl(appointment_repo),
             list_patient=ListPatientAppointmentsUseCaseImpl(appointment_repo),
             list_professional=ListProfessionalAppointmentsUseCaseImpl(appointment_repo),
             get_by_id=GetAppointmentUseCaseImpl(appointment_repo),
