@@ -1,58 +1,40 @@
-"""Cancel an existing appointment.
-
-Flow:
-1. Load the aggregate.
-2. Delegate to `Appointment.cancel()` (rejects COMPLETED, idempotent on CANCELLED).
-3. Persist.
-4. Publish AppointmentCancelled.
-"""
-
+"""Cancel an existing appointment."""
 from datetime import UTC, datetime
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from appointment.application.dto.commands import CancelAppointmentCommand
 from appointment.application.dto.responses import AppointmentResponse
-from appointment.application.events.appointment_events import AppointmentCancelled
-from appointment.application.ports.outbound.appointment_repository import (
-    AppointmentRepository,
-)
-from appointment.application.ports.outbound.event_publisher import EventPublisher
+from appointment.application.ports.outbound.appointment_repository import AppointmentRepository
 from appointment.application.usecase._mappers import to_response
 from appointment.domain.exception import AppointmentNotFound
+from appointment.domain.model.outbox_event import OutboxEvent
 
 
 class CancelAppointmentUseCaseImpl:
-    def __init__(
-        self,
-        repository: AppointmentRepository,
-        publisher: EventPublisher,
-    ) -> None:
+    def __init__(self, repository: AppointmentRepository) -> None:
         self._repository = repository
-        self._publisher = publisher
 
-    async def execute(
-        self,
-        cmd: CancelAppointmentCommand,
-        actor_id: UUID,
-    ) -> AppointmentResponse:
+    async def execute(self, cmd: CancelAppointmentCommand, actor_id: UUID) -> AppointmentResponse:
         appointment = await self._repository.find_by_id(cmd.appointment_id)
         if appointment is None:
             raise AppointmentNotFound(f"appointment {cmd.appointment_id} not found")
 
         appointment.cancel(reason=cmd.reason)
-        saved = await self._repository.update(appointment)
 
-        if saved.id is None:
-            raise RuntimeError("saved appointment has no id")
-
-        await self._publisher.publish(
-            AppointmentCancelled(
-                appointment_id=saved.id,
-                patient_id=saved.patient_id,
-                professional_id=saved.professional_id,
-                cancelled_by=actor_id,
-                occurred_at=datetime.now(UTC),
-            )
+        payload = {
+            "appointmentId": str(appointment.id),
+            "patientId": str(appointment.patient_id),
+            "professionalId": str(appointment.professional_id),
+            "startDateTime": appointment.start.isoformat().replace("+00:00", "Z"),
+            "cancelledBy": str(actor_id),
+            "cancelledAt": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+        }
+        event = OutboxEvent(
+            id=str(uuid4()),
+            event_type="AppointmentCancelled",
+            payload=payload,
+            created_at=datetime.now(UTC)
         )
 
+        saved = await self._repository.update(appointment, outbox_event=event)
         return to_response(saved)

@@ -40,6 +40,7 @@ from appointment.application.usecase.update_appointment_status import (
     UpdateAppointmentStatusUseCaseImpl,
 )
 from appointment.config.database import create_pool
+from appointment.adapter.outbound.messaging.outbox_poller import OutboxPoller
 from appointment.config.settings import get_settings
 
 
@@ -65,8 +66,16 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             get_by_id=GetAppointmentUseCaseImpl(appointment_repo),
         )
         app.state.idempotency = InMemoryIdempotencyStore()
+        
+        # Start Outbox Poller
+        poller = OutboxPoller(pool, settings.rabbitmq_url)
+        await poller.start()
+        app.state.outbox_poller = poller
+
         yield
     finally:
+        if hasattr(app.state, 'outbox_poller'):
+            await app.state.outbox_poller.stop()
         await pool.close()
 
 
