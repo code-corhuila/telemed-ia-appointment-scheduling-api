@@ -25,7 +25,7 @@ def _future(h: int) -> datetime:
 @pytest.mark.asyncio
 async def test_create_rejects_patient_overlap() -> None:
     repo = InMemoryAppointmentRepository()
-    use_case = CreateAppointmentUseCaseImpl(repo, RecordingEventPublisher())
+    use_case = CreateAppointmentUseCaseImpl(repo)
     patient_id = uuid4()
 
     # Primera cita
@@ -53,7 +53,7 @@ async def test_create_rejects_patient_overlap() -> None:
 @pytest.mark.asyncio
 async def test_create_rejects_professional_overlap() -> None:
     repo = InMemoryAppointmentRepository()
-    use_case = CreateAppointmentUseCaseImpl(repo, RecordingEventPublisher())
+    use_case = CreateAppointmentUseCaseImpl(repo)
     prof_id = uuid4()
 
     # Primera cita
@@ -81,7 +81,7 @@ async def test_create_rejects_professional_overlap() -> None:
 @pytest.mark.asyncio
 async def test_reschedule_rejects_patient_overlap() -> None:
     repo = InMemoryAppointmentRepository()
-    create = CreateAppointmentUseCaseImpl(repo, RecordingEventPublisher())
+    create = CreateAppointmentUseCaseImpl(repo)
     patient_id = uuid4()
 
     # Primera cita
@@ -104,7 +104,7 @@ async def test_reschedule_rejects_patient_overlap() -> None:
         )
     )
 
-    reschedule = RescheduleAppointmentUseCaseImpl(repo, RecordingEventPublisher())
+    reschedule = RescheduleAppointmentUseCaseImpl(repo)
     with pytest.raises(PatientSlotUnavailable):
         await reschedule.execute(
             RescheduleAppointmentCommand(

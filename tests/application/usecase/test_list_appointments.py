@@ -29,7 +29,7 @@ def _future(h: int) -> datetime:
 
 
 async def _seed(repo: InMemoryAppointmentRepository, n: int) -> None:
-    create = CreateAppointmentUseCaseImpl(repo, RecordingEventPublisher())
+    create = CreateAppointmentUseCaseImpl(repo)
     for i in range(n):
         await create.execute(
             CreateAppointmentCommand(

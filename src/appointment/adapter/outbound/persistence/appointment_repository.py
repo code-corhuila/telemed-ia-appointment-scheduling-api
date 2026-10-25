@@ -1,13 +1,16 @@
 """asyncpg implementation of AppointmentRepository (Anexo C layout)."""
 
 from datetime import datetime
+from uuid import UUID, uuid4
 
 import asyncpg
+import json
 
 from appointment.adapter.outbound.persistence.mappers import row_to_appointment
 from appointment.config.database import validate_schema_name
 from appointment.domain.model.appointment import Appointment
 from appointment.domain.model.appointment_status import AppointmentStatus
+from appointment.domain.model.outbox_event import OutboxEvent
 
 _ACTIVE_STATUSES = (AppointmentStatus.CONFIRMED.value, AppointmentStatus.RESCHEDULED.value)
 
@@ -17,11 +20,21 @@ class PostgresAppointmentRepository:
         self._pool = pool
         self._schema = validate_schema_name(schema)
 
-    # ------------------------------------------------------------------
-    # Write operations
-    # ------------------------------------------------------------------
+    async def _save_outbox(self, conn: asyncpg.Connection, event: OutboxEvent) -> None:
+        await conn.execute(
+            f"""
+            INSERT INTO {self._schema}.outbox_event (id, event_type, payload, correlation_id, status, created_at)
+            VALUES ($1, $2, $3::jsonb, $4, $5, $6)
+            """,
+            event.id,
+            event.event_type,
+            event.to_json(),
+            event.correlation_id,
+            event.status,
+            event.created_at,
+        )
 
-    async def save(self, appointment: Appointment) -> Appointment:
+    async def save(self, appointment: Appointment, outbox_event: OutboxEvent | None = None) -> Appointment:
         sql = f"""
             INSERT INTO {self._schema}.appointments
                 (patient_id, professional_id, preconsultation_summary_id,
@@ -32,24 +45,34 @@ class PostgresAppointmentRepository:
                       post_summary_id, start_time, end_time, status,
                       cancellation_reason, created_at, updated_at, deleted_at
         """
-        try:
-            row = await self._pool.fetchrow(
-                sql,
-                appointment.patient_id,
-                appointment.professional_id,
-            appointment.preconsultation_summary_id,
-            appointment.post_summary_id,
-            appointment.start,
-            appointment.end,
-            appointment.status.value,
-            appointment.cancellation_reason,
-            appointment.created_at,
-            appointment.updated_at,
-            appointment.deleted_at,
-        )
-        return row_to_appointment(row)
+        
+        async with self._pool.acquire() as conn:
+            async with conn.transaction():
+                row = await conn.fetchrow(
+                    sql,
+                    appointment.patient_id,
+                    appointment.professional_id,
+                    appointment.preconsultation_summary_id,
+                    appointment.post_summary_id,
+                    appointment.start,
+                    appointment.end,
+                    appointment.status.value,
+                    appointment.cancellation_reason,
+                    appointment.created_at,
+                    appointment.updated_at,
+                    appointment.deleted_at,
+                )
+                saved_appt = row_to_appointment(row)
+                
+                if outbox_event:
+                    # Actualizamos el payload con el ID real generado por la DB
+                    outbox_event.payload["appointmentId"] = str(saved_appt.id)
+                    outbox_event.id = str(uuid4()) # Generamos un ID único para el evento
+                    await self._save_outbox(conn, outbox_event)
+                    
+                return saved_appt
 
-    async def update(self, appointment: Appointment) -> Appointment:
+    async def update(self, appointment: Appointment, outbox_event: OutboxEvent | None = None) -> Appointment:
         if appointment.id is None:
             raise ValueError("cannot update an appointment without id")
         sql = f"""
@@ -69,32 +92,36 @@ class PostgresAppointmentRepository:
                       post_summary_id, start_time, end_time, status,
                       cancellation_reason, created_at, updated_at, deleted_at
         """
-        try:
-            row = await self._pool.fetchrow(
-                sql,
-                appointment.id,
-                appointment.patient_id,
-                appointment.professional_id,
-                appointment.preconsultation_summary_id,
-                appointment.post_summary_id,
-                appointment.start,
-                appointment.end,
-                appointment.status.value,
-                appointment.cancellation_reason,
-                appointment.updated_at,
-                appointment.deleted_at,
-            )
-        except asyncpg.exceptions.ExclusionViolationError as exc:
-            raise self._map_exclusion_violation(exc) from exc
-        if row is None:
-            raise ValueError(f"appointment {appointment.id} not found")
-        return row_to_appointment(row)
+        
+        async with self._pool.acquire() as conn:
+            async with conn.transaction():
+                row = await conn.fetchrow(
+                    sql,
+                    appointment.id,
+                    appointment.patient_id,
+                    appointment.professional_id,
+                    appointment.preconsultation_summary_id,
+                    appointment.post_summary_id,
+                    appointment.start,
+                    appointment.end,
+                    appointment.status.value,
+                    appointment.cancellation_reason,
+                    appointment.updated_at,
+                    appointment.deleted_at,
+                )
+                if row is None:
+                    raise ValueError(f"appointment {appointment.id} not found")
+                saved_appt = row_to_appointment(row)
+                
+                if outbox_event:
+                    outbox_event.payload["appointmentId"] = str(saved_appt.id)
+                    outbox_event.id = str(uuid4())
+                    await self._save_outbox(conn, outbox_event)
+                    
+                return saved_appt
 
-    # ------------------------------------------------------------------
-    # Read operations
-    # ------------------------------------------------------------------
-
-    async def find_by_id(self, appointment_id: int) -> Appointment | None:
+    # --- Read operations (sin cambios) ---
+    async def find_by_id(self, appointment_id: UUID) -> Appointment | None:
         sql = f"""
             SELECT id, patient_id, professional_id, preconsultation_summary_id,
                    post_summary_id, start_time, end_time, status,
@@ -105,9 +132,7 @@ class PostgresAppointmentRepository:
         row = await self._pool.fetchrow(sql, appointment_id)
         return row_to_appointment(row) if row else None
 
-    async def find_by_patient(
-        self, patient_id: int, *, offset: int, limit: int
-    ) -> tuple[list[Appointment], int]:
+    async def find_by_patient(self, patient_id: UUID, *, offset: int, limit: int) -> tuple[list[Appointment], int]:
         sql = f"""
             SELECT id, patient_id, professional_id, preconsultation_summary_id,
                    post_summary_id, start_time, end_time, status,
@@ -125,9 +150,7 @@ class PostgresAppointmentRepository:
         total = await self._pool.fetchval(count_sql, patient_id)
         return [row_to_appointment(r) for r in rows], int(total or 0)
 
-    async def find_by_professional(
-        self, professional_id: UUID, *, offset: int, limit: int
-    ) -> tuple[list[Appointment], int]:
+    async def find_by_professional(self, professional_id: UUID, *, offset: int, limit: int) -> tuple[list[Appointment], int]:
         sql = f"""
             SELECT id, patient_id, professional_id, preconsultation_summary_id,
                    post_summary_id, start_time, end_time, status,
@@ -145,42 +168,7 @@ class PostgresAppointmentRepository:
         total = await self._pool.fetchval(count_sql, professional_id)
         return [row_to_appointment(r) for r in rows], int(total or 0)
 
-
-    def _map_exclusion_violation(self, exc: asyncpg.exceptions.ExclusionViolationError) -> Exception:
-        if "ex_appointments_patient_slot" in str(exc):
-            return PatientSlotUnavailable("patient already has an overlapping appointment")
-        if "ex_appointments_professional_slot" in str(exc):
-            return SlotUnavailable("professional already has an overlapping appointment")
-        return exc
-
-    async def find_active_overlapping_by_patient(
-        self,
-        patient_id: UUID,
-        start: datetime,
-        end: datetime,
-    ) -> list[Appointment]:
-        sql = f"""
-            SELECT id, patient_id, professional_id, preconsultation_summary_id,
-                   post_summary_id, start_time, end_time, status,
-                   cancellation_reason, created_at, updated_at, deleted_at
-            FROM {self._schema}.appointments
-            WHERE patient_id = $1
-              AND status = ANY($2::text[])
-              AND start_time < $4
-              AND $3 < end_time
-              AND deleted_at IS NULL
-        """
-        rows = await self._pool.fetch(
-            sql, patient_id, list(_ACTIVE_STATUSES), start, end
-        )
-        return [row_to_appointment(r) for r in rows]
-
-    async def find_active_overlapping(
-        self,
-        professional_id: UUID,
-        start: datetime,
-        end: datetime,
-    ) -> list[Appointment]:
+    async def find_active_overlapping(self, professional_id: UUID, start: datetime, end: datetime) -> list[Appointment]:
         sql = f"""
             SELECT id, patient_id, professional_id, preconsultation_summary_id,
                    post_summary_id, start_time, end_time, status,
@@ -192,7 +180,20 @@ class PostgresAppointmentRepository:
               AND $3 < end_time
               AND deleted_at IS NULL
         """
-        rows = await self._pool.fetch(
-            sql, professional_id, list(_ACTIVE_STATUSES), start, end
-        )
+        rows = await self._pool.fetch(sql, professional_id, list(_ACTIVE_STATUSES), start, end)
+        return [row_to_appointment(r) for r in rows]
+        
+    async def find_active_overlapping_by_patient(self, patient_id: UUID, start: datetime, end: datetime) -> list[Appointment]:
+        sql = f"""
+            SELECT id, patient_id, professional_id, preconsultation_summary_id,
+                   post_summary_id, start_time, end_time, status,
+                   cancellation_reason, created_at, updated_at, deleted_at
+            FROM {self._schema}.appointments
+            WHERE patient_id = $1
+              AND status = ANY($2::text[])
+              AND start_time < $4
+              AND $3 < end_time
+              AND deleted_at IS NULL
+        """
+        rows = await self._pool.fetch(sql, patient_id, list(_ACTIVE_STATUSES), start, end)
         return [row_to_appointment(r) for r in rows]

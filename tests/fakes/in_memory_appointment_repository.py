@@ -10,17 +10,20 @@ from appointment.domain.model.appointment_status import AppointmentStatus
 class InMemoryAppointmentRepository:
     def __init__(self) -> None:
         self._items: dict[UUID, Appointment] = {}
+        self.outbox_events = []
 
-    async def save(self, appointment: Appointment) -> Appointment:
+    async def save(self, appointment: Appointment, outbox_event=None) -> Appointment:
         if appointment.id is None:
             appointment.id = uuid4()
         self._items[appointment.id] = appointment
+        if outbox_event: self.outbox_events.append(outbox_event)
         return appointment
 
-    async def update(self, appointment: Appointment) -> Appointment:
+    async def update(self, appointment: Appointment, outbox_event=None) -> Appointment:
         if appointment.id is None or appointment.id not in self._items:
             raise ValueError("appointment does not exist")
         self._items[appointment.id] = appointment
+        if outbox_event: self.outbox_events.append(outbox_event)
         return appointment
 
     async def find_by_id(self, appointment_id: UUID) -> Appointment | None:
