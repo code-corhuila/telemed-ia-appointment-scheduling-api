@@ -1,33 +1,30 @@
+"""Application settings, loaded from environment variables."""
 from functools import lru_cache
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    """Environment configuration of the service.
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    Values are read from environment variables and, in local development,
-    from a `.env` file at the project root.
-    """
-
-    model_config = SettingsConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
-        extra="ignore",
-        case_sensitive=False,
-    )
-
-    environment: str = "development"
-    server_port: int = 8080
-
-    db_host: str = "postgres"
+    # Database
+    db_host: str = "localhost"
     db_port: int = 5432
+    db_user: str = "postgres"
+    db_password: str = "postgres"
     db_name: str = "telemed_ia"
-    db_user: str = "appointment_scheduling_app"
-    db_password: str = ""
     db_schema: str = "appointment_scheduling"
 
+    # JWT (private key only used in tests; production only needs public)
+    jwt_private_key: str = ""
     jwt_public_key: str = ""
+
+    # RabbitMQ
+    rabbitmq_url: str = "amqp://guest:guest@rabbitmq:5672/"
+
+    # Server
+    server_port: int = 8080
+    environment: str = "development"
 
 
 @lru_cache
