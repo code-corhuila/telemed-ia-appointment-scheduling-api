@@ -17,7 +17,6 @@ class CreateAppointmentCommand(BaseModel):
     patient_id: UUID
     professional_id: UUID
     start: datetime
-    end: datetime
     preconsultation_summary_id: UUID | None = None
 
     @field_validator("patient_id", "professional_id")
@@ -43,7 +42,6 @@ class CancelAppointmentCommand(BaseModel):
 class RescheduleAppointmentCommand(BaseModel):
     appointment_id: UUID
     new_start: datetime
-    new_end: datetime
 
     @field_validator("appointment_id")
     @classmethod
