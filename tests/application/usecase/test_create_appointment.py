@@ -25,7 +25,6 @@ async def test_create_persists_and_publishes() -> None:
             patient_id=PATIENT_ID,
             professional_id=PROFESSIONAL_ID,
             start=_future(24),
-            end=_future(25),
         )
     )
 
@@ -57,7 +56,6 @@ async def test_create_rejects_overlapping_slot() -> None:
             patient_id=PATIENT_ID,
             professional_id=PROFESSIONAL_ID,
             start=_future(24),
-            end=_future(25),
         )
     )
 
@@ -66,7 +64,6 @@ async def test_create_rejects_overlapping_slot() -> None:
             CreateAppointmentCommand(
                 patient_id=uuid4(),
                 professional_id=PROFESSIONAL_ID,
-                start=_future(24.5),
-                end=_future(25.5),
+                start=_future(24.25), # 15 mins después, dentro de los 30 mins
             )
         )

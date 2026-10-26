@@ -15,7 +15,6 @@ from appointment.application.usecase.reschedule_appointment import (
 )
 from appointment.domain.exception import PatientSlotUnavailable, SlotUnavailable
 from tests.fakes.in_memory_appointment_repository import InMemoryAppointmentRepository
-from tests.fakes.recording_event_publisher import RecordingEventPublisher
 
 
 def _future(h: int) -> datetime:
@@ -34,7 +33,6 @@ async def test_create_rejects_patient_overlap() -> None:
             patient_id=patient_id,
             professional_id=uuid4(),
             start=_future(24),
-            end=_future(25),
         )
     )
 
@@ -44,8 +42,7 @@ async def test_create_rejects_patient_overlap() -> None:
             CreateAppointmentCommand(
                 patient_id=patient_id,
                 professional_id=uuid4(),
-                start=_future(24.5),
-                end=_future(25.5),
+                start=_future(24.25),
             )
         )
 
@@ -62,7 +59,6 @@ async def test_create_rejects_professional_overlap() -> None:
             patient_id=uuid4(),
             professional_id=prof_id,
             start=_future(24),
-            end=_future(25),
         )
     )
 
@@ -72,8 +68,7 @@ async def test_create_rejects_professional_overlap() -> None:
             CreateAppointmentCommand(
                 patient_id=uuid4(),
                 professional_id=prof_id,
-                start=_future(24.5),
-                end=_future(25.5),
+                start=_future(24.25),
             )
         )
 
@@ -90,7 +85,6 @@ async def test_reschedule_rejects_patient_overlap() -> None:
             patient_id=patient_id,
             professional_id=uuid4(),
             start=_future(24),
-            end=_future(25),
         )
     )
 
@@ -100,7 +94,6 @@ async def test_reschedule_rejects_patient_overlap() -> None:
             patient_id=patient_id,
             professional_id=uuid4(),
             start=_future(48),
-            end=_future(49),
         )
     )
 
@@ -109,7 +102,6 @@ async def test_reschedule_rejects_patient_overlap() -> None:
         await reschedule.execute(
             RescheduleAppointmentCommand(
                 appointment_id=resp2.id,
-                new_start=_future(24.5),
-                new_end=_future(25.5),
+                new_start=_future(24.25),
             )
         )

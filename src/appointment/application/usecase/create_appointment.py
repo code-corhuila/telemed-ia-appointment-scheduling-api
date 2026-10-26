@@ -1,4 +1,5 @@
 """Create a new appointment."""
+
 from datetime import UTC, datetime
 from uuid import uuid4
 
@@ -16,11 +17,11 @@ class CreateAppointmentUseCaseImpl:
         self._repository = repository
 
     async def execute(self, cmd: CreateAppointmentCommand) -> AppointmentResponse:
+        # El dominio ahora calcula el 'end' automáticamente si no se lo pasamos
         appointment = Appointment.create(
             patient_id=cmd.patient_id,
             professional_id=cmd.professional_id,
             start=cmd.start,
-            end=cmd.end,
             preconsultation_summary_id=cmd.preconsultation_summary_id,
         )
 
@@ -36,7 +37,6 @@ class CreateAppointmentUseCaseImpl:
         if patient_overlaps:
             raise PatientSlotUnavailable("the patient already has another active appointment at this time")
 
-        # Creamos el evento (el ID se llena en el repositorio)
         payload = {
             "appointmentId": None,
             "patientId": str(appointment.patient_id),

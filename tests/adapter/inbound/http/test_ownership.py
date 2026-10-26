@@ -48,7 +48,6 @@ def _create(
             "patientId": patient_id,
             "professionalId": professional_id,
             "start": _future(24),
-            "end": _future(25),
         },
     )
     assert response.status_code == 201, response.text
@@ -272,7 +271,6 @@ def test_patient_cannot_create_appointment_for_another_patient(
             "patientId": other_patient,
             "professionalId": professional,
             "start": _future(24),
-            "end": _future(25),
         },
     )
     assert response.status_code == 403

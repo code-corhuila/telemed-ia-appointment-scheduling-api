@@ -1,14 +1,4 @@
-"""HTTP endpoints of the appointment-scheduling service.
-
-Seven endpoints, matching the contract exactly:
-- POST  /api/appointments/
-- GET   /api/appointments/{id}
-- GET   /api/appointments/patient/{id}
-- GET   /api/appointments/professional/{id}
-- PATCH /api/appointments/{id}/cancel
-- PATCH /api/appointments/{id}/reschedule
-- PATCH /api/appointments/{id}/status
-"""
+"""HTTP endpoints of the appointment-scheduling service."""
 
 from typing import Annotated
 from uuid import UUID
@@ -108,7 +98,6 @@ async def create(
             patient_id=body.patient_id,
             professional_id=body.professional_id,
             start=body.start,
-            end=body.end,
         )
     )
     payload = response.model_dump(by_alias=True, mode="json")
@@ -209,7 +198,6 @@ async def reschedule(
         RescheduleAppointmentCommand(
             appointment_id=appointment_id,
             new_start=body.start,
-            new_end=body.end,
         )
     )
     return response.model_dump(by_alias=True, mode="json")
