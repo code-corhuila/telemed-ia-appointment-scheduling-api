@@ -27,7 +27,6 @@ def test_create_appointment_returns_201(client: TestClient, make_token) -> None:
             "patientId": PATIENT_UUID,
             "professionalId": PROFESSIONAL_UUID,
             "start": _future(24),
-            "end": _future(25),
         },
     )
     assert response.status_code == 201
@@ -45,7 +44,6 @@ def test_create_without_idempotency_key_returns_400(client: TestClient, make_tok
             "patientId": PATIENT_UUID,
             "professionalId": PROFESSIONAL_UUID,
             "start": _future(24),
-            "end": _future(25),
         },
     )
     assert response.status_code == 400
@@ -58,7 +56,6 @@ def test_create_is_idempotent(client: TestClient, make_token) -> None:
         "patientId": PATIENT_UUID,
         "professionalId": PROFESSIONAL_UUID,
         "start": _future(24),
-        "end": _future(25),
     }
     first = client.post("/api/appointments/", headers=headers, json=body)
     second = client.post("/api/appointments/", headers=headers, json=body)
@@ -76,7 +73,6 @@ def test_cancel_and_list(client: TestClient, make_token) -> None:
             "patientId": PATIENT_UUID,
             "professionalId": PROFESSIONAL_UUID,
             "start": _future(24),
-            "end": _future(25),
         },
     ).json()
 
@@ -133,7 +129,6 @@ def test_create_patient_conflict_returns_409_with_code(client, make_token):
             "patientId": patient_uuid,
             "professionalId": prof1_uuid,
             "start": _future(24),
-            "end": _future(25),
         },
     )
     assert response1.status_code == 201
@@ -146,8 +141,7 @@ def test_create_patient_conflict_returns_409_with_code(client, make_token):
         json={
             "patientId": patient_uuid,
             "professionalId": prof2_uuid,
-            "start": _future(24.5),
-            "end": _future(25.5),
+            "start": _future(24.25),
         },
     )
     

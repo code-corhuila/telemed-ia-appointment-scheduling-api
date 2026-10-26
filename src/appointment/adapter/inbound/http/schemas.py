@@ -1,9 +1,4 @@
-"""HTTP request bodies.
-
-They are distinct from the application DTOs on purpose: HTTP field names
-come from the contract, while application DTOs are Python-idiomatic. The
-router translates between them.
-"""
+"""HTTP request bodies."""
 
 from datetime import datetime
 from uuid import UUID
@@ -18,7 +13,6 @@ class CreateAppointmentRequest(CamelCaseModel):
     patient_id: UUID
     professional_id: UUID
     start: datetime
-    end: datetime
 
     @field_validator("patient_id", "professional_id")
     @classmethod
@@ -41,7 +35,6 @@ class CancelAppointmentRequest(CamelCaseModel):
 
 class RescheduleAppointmentRequest(CamelCaseModel):
     start: datetime
-    end: datetime
 
 
 class UpdateStatusRequest(CamelCaseModel):

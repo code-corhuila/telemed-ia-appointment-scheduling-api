@@ -17,11 +17,11 @@ def _future(hours: int = 24) -> datetime:
 
 
 def _create() -> Appointment:
+    # Sin pasar 'end', el dominio debe calcularlo automáticamente
     return Appointment.create(
         patient_id=uuid4(),
         professional_id=uuid4(),
         start=_future(24),
-        end=_future(25),
     )
 
 
@@ -29,6 +29,7 @@ def test_create_starts_in_confirmed() -> None:
     appt = _create()
     assert appt.status is AppointmentStatus.CONFIRMED
     assert appt.cancellation_reason is None
+    assert appt.end == appt.start + timedelta(minutes=30)  # Verifica que se calculó
 
 
 def test_create_rejects_end_before_start() -> None:
@@ -37,7 +38,7 @@ def test_create_rejects_end_before_start() -> None:
             patient_id=uuid4(),
             professional_id=uuid4(),
             start=_future(25),
-            end=_future(24),
+            end=_future(24), # Pasamos un end inválido explícitamente
         )
 
 
@@ -47,28 +48,28 @@ def test_create_rejects_start_in_the_past() -> None:
             patient_id=uuid4(),
             professional_id=uuid4(),
             start=_future(-24),
-            end=_future(-23),
         )
 
 
 def test_create_rejects_missing_ids() -> None:
     with pytest.raises(ValueError):
-        Appointment.create(patient_id=None, professional_id=uuid4(), start=_future(24), end=_future(25))
+        Appointment.create(patient_id=None, professional_id=uuid4(), start=_future(24))
     with pytest.raises(ValueError):
-        Appointment.create(patient_id=uuid4(), professional_id=None, start=_future(24), end=_future(25))
+        Appointment.create(patient_id=uuid4(), professional_id=None, start=_future(24))
 
 
 def test_reschedule_from_confirmed_transitions_to_rescheduled() -> None:
     appt = _create()
-    appt.reschedule(new_start=_future(48), new_end=_future(49))
+    appt.reschedule(new_start=_future(48))
     assert appt.status is AppointmentStatus.RESCHEDULED
+    assert appt.end == appt.start + timedelta(minutes=30)
 
 
 def test_reschedule_rejects_terminal_status() -> None:
     appt = _create()
     appt.cancel(reason="patient request")
     with pytest.raises(InvalidStatusTransition):
-        appt.reschedule(new_start=_future(48), new_end=_future(49))
+        appt.reschedule(new_start=_future(48))
 
 
 def test_cancel_sets_reason_and_status() -> None:

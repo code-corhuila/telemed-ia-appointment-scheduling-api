@@ -21,7 +21,7 @@ async def test_mark_completed_publishes_event() -> None:
     repo = InMemoryAppointmentRepository()
     create = CreateAppointmentUseCaseImpl(repo)
     a = await create.execute(
-        CreateAppointmentCommand(patient_id=PATIENT_ID, professional_id=PROFESSIONAL_ID, start=_future(24), end=_future(25))
+        CreateAppointmentCommand(patient_id=PATIENT_ID, professional_id=PROFESSIONAL_ID, start=_future(24))
     )
 
     use_case = UpdateAppointmentStatusUseCaseImpl(repo)
@@ -39,7 +39,7 @@ async def test_cancel_via_status_endpoint_is_rejected() -> None:
     repo = InMemoryAppointmentRepository()
     create = CreateAppointmentUseCaseImpl(repo)
     a = await create.execute(
-        CreateAppointmentCommand(patient_id=PATIENT_ID, professional_id=PROFESSIONAL_ID, start=_future(24), end=_future(25))
+        CreateAppointmentCommand(patient_id=PATIENT_ID, professional_id=PROFESSIONAL_ID, start=_future(24))
     )
 
     use_case = UpdateAppointmentStatusUseCaseImpl(repo)

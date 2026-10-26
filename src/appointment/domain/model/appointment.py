@@ -1,12 +1,7 @@
-"""Appointment aggregate root.
-
-Owns the entire appointment lifecycle: creation, reschedule, cancellation,
-completion and no-show. Enforces every invariant the domain contract
-defines, independently of any framework.
-"""
+"""Appointment aggregate root."""
 
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Self
 from uuid import UUID
 
@@ -40,11 +35,16 @@ class Appointment:
         patient_id: UUID,
         professional_id: UUID,
         start: datetime,
-        end: datetime,
+        end: datetime | None = None,  # <-- Ahora es opcional
         preconsultation_summary_id: UUID | None = None,
     ) -> Self:
         if patient_id is None or professional_id is None:
             raise ValueError("patient_id and professional_id are required")
+        
+        # Si el usuario no envía 'end', calculamos +30 mins automáticamente
+        if end is None:
+            end = start + timedelta(minutes=30)
+
         if end <= start:
             raise InvalidAppointmentTimes("end must be after start")
         now = datetime.now(UTC)
@@ -97,8 +97,12 @@ class Appointment:
             deleted_at=deleted_at,
         )
 
-    def reschedule(self, *, new_start: datetime, new_end: datetime) -> None:
+    def reschedule(self, *, new_start: datetime, new_end: datetime | None = None) -> None:
         self._ensure_active()
+        
+        if new_end is None:
+            new_end = new_start + timedelta(minutes=30)
+
         if new_end <= new_start:
             raise InvalidAppointmentTimes("end must be after start")
         now = datetime.now(UTC)

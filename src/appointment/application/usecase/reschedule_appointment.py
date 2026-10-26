@@ -1,4 +1,5 @@
 """Reschedule an existing appointment."""
+
 from datetime import UTC, datetime
 from uuid import uuid4
 
@@ -20,7 +21,8 @@ class RescheduleAppointmentUseCaseImpl:
             raise AppointmentNotFound(f"appointment {cmd.appointment_id} not found")
 
         previous_start = appointment.start
-        appointment.reschedule(new_start=cmd.new_start, new_end=cmd.new_end)
+        # El dominio calcula el nuevo 'end' automáticamente (+30 mins)
+        appointment.reschedule(new_start=cmd.new_start)
 
         prof_overlaps = await self._repository.find_active_overlapping(
             appointment.professional_id, appointment.start, appointment.end

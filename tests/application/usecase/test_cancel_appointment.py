@@ -23,7 +23,6 @@ async def _seed(repo: InMemoryAppointmentRepository, patient_id=None) -> object:
             patient_id=patient_id or PATIENT_ID,
             professional_id=PROFESSIONAL_ID,
             start=_future(24),
-            end=_future(25),
         )
     )
     return response.id
