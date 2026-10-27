@@ -223,3 +223,13 @@ async def update_status(
         )
     )
     return response.model_dump(by_alias=True, mode="json")
+
+
+@router.get("/internal/reminders", response_model=list[AppointmentResponse])
+async def get_upcoming_reminders(
+    request: Request,
+    user: Annotated[AuthenticatedUser, Depends(require_roles("SERVICE"))],
+):
+    if user.user_id != "worker":
+        raise HTTPException(status_code=403, detail="Only the worker can access this endpoint")
+    return await _container(request).list_reminders.execute()
