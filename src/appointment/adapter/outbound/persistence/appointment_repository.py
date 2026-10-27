@@ -197,3 +197,17 @@ class PostgresAppointmentRepository:
         """
         rows = await self._pool.fetch(sql, patient_id, list(_ACTIVE_STATUSES), start, end)
         return [row_to_appointment(r) for r in rows]
+
+    async def find_upcoming_for_reminders(self, start: datetime, end: datetime) -> list[Appointment]:
+        sql = f"""
+            SELECT id, patient_id, professional_id, preconsultation_summary_id,
+                   post_summary_id, start_time, end_time, status,
+                   cancellation_reason, created_at, updated_at, deleted_at
+            FROM {self._schema}.appointments
+            WHERE status IN ('CONFIRMED', 'RESCHEDULED')
+              AND start_time >= $1
+              AND start_time <= $2
+              AND deleted_at IS NULL
+        """
+        rows = await self._pool.fetch(sql, start, end)
+        return [row_to_appointment(r) for r in rows]

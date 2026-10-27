@@ -10,6 +10,7 @@ from appointment.adapter.inbound.http.container import Container
 from appointment.application.usecase.cancel_appointment import CancelAppointmentUseCaseImpl
 from appointment.application.usecase.create_appointment import CreateAppointmentUseCaseImpl
 from appointment.application.usecase.get_appointment import GetAppointmentUseCaseImpl
+from appointment.application.usecase.list_upcoming_reminders import ListUpcomingRemindersUseCaseImpl
 from appointment.application.usecase.list_appointments import (
     ListPatientAppointmentsUseCaseImpl,
     ListProfessionalAppointmentsUseCaseImpl,
@@ -19,9 +20,6 @@ from appointment.application.usecase.update_appointment_status import UpdateAppo
 from appointment.config.settings import get_settings
 from tests.fakes.in_memory_appointment_repository import InMemoryAppointmentRepository
 
-# ==============================================================================
-# 1. Generar llaves RSA para tests (una sola vez por sesión)
-# ==============================================================================
 @pytest.fixture(scope="session", autouse=True)
 def setup_test_keys():
     private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
@@ -42,9 +40,6 @@ def setup_test_keys():
     settings.jwt_public_key = public_pem
     yield
 
-# ==============================================================================
-# 2. Fixtures base
-# ==============================================================================
 @pytest.fixture
 def container() -> Container:
     repo = InMemoryAppointmentRepository()
@@ -56,6 +51,7 @@ def container() -> Container:
         list_patient=ListPatientAppointmentsUseCaseImpl(repo),
         list_professional=ListProfessionalAppointmentsUseCaseImpl(repo),
         get_by_id=GetAppointmentUseCaseImpl(repo),
+        list_reminders=ListUpcomingRemindersUseCaseImpl(repo), # <-- Agregado
     )
 
 @pytest.fixture
@@ -63,9 +59,6 @@ def client(container: Container) -> TestClient:
     app = create_app(container=container)
     return TestClient(app)
 
-# ==============================================================================
-# 3. Fixture de autenticación
-# ==============================================================================
 @pytest.fixture
 def make_token():
     def _factory(subject: str, role: str, minutes: int = 10) -> str:

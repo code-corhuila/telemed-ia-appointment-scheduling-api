@@ -15,6 +15,9 @@ from appointment.application.usecase.create_appointment import (
 from appointment.application.usecase.get_appointment import (
     GetAppointmentUseCaseImpl,
 )
+from appointment.application.usecase.list_upcoming_reminders import (
+    ListUpcomingRemindersUseCaseImpl,
+)
 from appointment.application.usecase.list_appointments import (
     ListPatientAppointmentsUseCaseImpl,
     ListProfessionalAppointmentsUseCaseImpl,
@@ -36,3 +39,4 @@ class Container:
     list_patient: ListPatientAppointmentsUseCaseImpl
     list_professional: ListProfessionalAppointmentsUseCaseImpl
     get_by_id: GetAppointmentUseCaseImpl
+    list_reminders: ListUpcomingRemindersUseCaseImpl
