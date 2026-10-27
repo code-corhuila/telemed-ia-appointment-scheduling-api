@@ -28,6 +28,7 @@ from appointment.application.usecase.create_appointment import (
 from appointment.application.usecase.get_appointment import (
     GetAppointmentUseCaseImpl,
 )
+from appointment.application.usecase.list_upcoming_reminders import ListUpcomingRemindersUseCaseImpl
 from appointment.application.usecase.list_appointments import (
     ListPatientAppointmentsUseCaseImpl,
     ListProfessionalAppointmentsUseCaseImpl,
@@ -66,10 +67,17 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         )
         app.state.idempotency = InMemoryIdempotencyStore()
         
-        # Start Outbox Poller
-        poller = OutboxPoller(pool, settings.rabbitmq_url)
-        await poller.start()
-        app.state.outbox_poller = poller
+        # Start Outbox Poller (resilient: don't crash the API if RabbitMQ is down)
+        try:
+            poller = OutboxPoller(pool, settings.rabbitmq_url)
+            await poller.start()
+            app.state.outbox_poller = poller
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(
+                f"Failed to start OutboxPoller (RabbitMQ might be down). "
+                f"The API will start but outbox events won't be published until the next restart. Error: {e}"
+            )
 
         yield
     finally:
