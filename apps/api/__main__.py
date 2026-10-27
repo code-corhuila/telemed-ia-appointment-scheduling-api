@@ -62,6 +62,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             list_patient=ListPatientAppointmentsUseCaseImpl(appointment_repo),
             list_professional=ListProfessionalAppointmentsUseCaseImpl(appointment_repo),
             get_by_id=GetAppointmentUseCaseImpl(appointment_repo),
+            list_reminders=ListUpcomingRemindersUseCaseImpl(appointment_repo),
         )
         app.state.idempotency = InMemoryIdempotencyStore()
         
