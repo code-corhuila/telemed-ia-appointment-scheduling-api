@@ -49,6 +49,7 @@ class RescheduleAppointmentUseCaseImpl:
             id=str(uuid4()),
             event_type="AppointmentRescheduled",
             payload=payload,
+            correlation_id=cmd.correlation_id,
             created_at=datetime.now(UTC)
         )
 
