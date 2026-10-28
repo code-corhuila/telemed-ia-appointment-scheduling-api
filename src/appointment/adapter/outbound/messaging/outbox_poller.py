@@ -1,14 +1,25 @@
 import asyncio
-import json
 import logging
-from datetime import datetime, timezone
 from uuid import uuid4
 
 import aio_pika
 import asyncpg
-from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
+
+OUTBOX_EXCHANGE = "appointments.events"
+OUTBOX_BATCH_SIZE = 10
+OUTBOX_MAX_ATTEMPTS = 5
+OUTBOX_POLL_INTERVAL_SECONDS = 5
+
+ROUTING_KEYS = {
+    "AppointmentCreated": "appointment-created",
+    "AppointmentRescheduled": "appointment-rescheduled",
+    "AppointmentCancelled": "appointment-cancelled",
+    "AppointmentCompleted": "appointment-completed",
+    "AppointmentReminderDue": "appointment-reminder-due",
+}
+
 
 class OutboxPoller:
     def __init__(self, pool: asyncpg.Pool, rabbit_url: str):
@@ -20,13 +31,16 @@ class OutboxPoller:
 
     async def start(self):
         self.running = True
-        # Conexión inicial a RabbitMQ
         self.connection = await aio_pika.connect_robust(self.rabbit_url)
         self.channel = await self.connection.channel()
-        # Declarar el Topic Exchange
-        await self.channel.declare_exchange("appointments.events", aio_pika.ExchangeType.TOPIC, durable=True)
-        
-        logger.info("OutboxPoller started. Polling every 5 seconds...")
+        await self.channel.declare_exchange(
+            OUTBOX_EXCHANGE, aio_pika.ExchangeType.TOPIC, durable=True
+        )
+        logger.info(
+            "OutboxPoller started. Polling every %ss (max attempts: %s)",
+            OUTBOX_POLL_INTERVAL_SECONDS,
+            OUTBOX_MAX_ATTEMPTS,
+        )
         asyncio.create_task(self._loop())
 
     async def stop(self):
@@ -40,55 +54,107 @@ class OutboxPoller:
                 await self._process_batch()
             except Exception as e:
                 logger.error(f"Error in OutboxPoller: {e}")
-            await asyncio.sleep(5)
+            await asyncio.sleep(OUTBOX_POLL_INTERVAL_SECONDS)
+
+    def _build_message(self, row) -> aio_pika.Message:
+        """Build the AMQP message for one outbox row.
+
+        Uses the public ``event_id`` (not the row's internal ``id``) as the
+        AMQP ``MessageId`` so that consumers can deduplicate by the envelope's
+        ``eventId`` without seeing a different value at the AMQP level.
+
+        An empty ``correlation_id`` is sent as ``None`` so aio-pika does not
+        emit a bogus header.
+        """
+        return aio_pika.Message(
+            body=row["payload"].encode(),
+            content_type="application/json",
+            delivery_mode=aio_pika.DeliveryMode.PERSISTENT,
+            message_id=str(row["event_id"]),
+            type=row["event_type"],
+            correlation_id=row["correlation_id"] or None,
+        )
 
     async def _process_batch(self):
         async with self.pool.acquire() as conn:
             async with conn.transaction():
-                # Seleccionar eventos pendientes (SKIP LOCKED evita colisiones)
-                rows = await conn.fetch("""
-                    SELECT id, event_type, payload, correlation_id
+                rows = await conn.fetch(
+                    """
+                    SELECT id, event_id, event_type, payload,
+                           COALESCE(correlation_id, '') AS correlation_id
                     FROM appointment_scheduling.outbox_event
                     WHERE status = 'PENDING'
                     ORDER BY created_at ASC
-                    LIMIT 10
+                    LIMIT $1
                     FOR UPDATE SKIP LOCKED
-                """)
-                
+                    """,
+                    OUTBOX_BATCH_SIZE,
+                )
+
                 if not rows:
                     return
 
-                exchange = await self.channel.get_exchange("appointments.events")
-                published_ids = []
+                exchange = await self.channel.get_exchange(OUTBOX_EXCHANGE)
+                published_ids: list = []
+                failed: list[tuple] = []
 
                 for row in rows:
-                    # El event_type en la DB está en PascalCase (ej: AppointmentCreated)
-                    # La routing key debe ser kebab-case (ej: appointment-created)
-                    routing_key = row["event_type"]
-                    if routing_key == "AppointmentCreated": routing_key = "appointment-created"
-                    elif routing_key == "AppointmentRescheduled": routing_key = "appointment-rescheduled"
-                    elif routing_key == "AppointmentCancelled": routing_key = "appointment-cancelled"
-                    
-                    message = aio_pika.Message(
-                        body=row["payload"].encode(),
-                        content_type="application/json",
-                        delivery_mode=aio_pika.DeliveryMode.PERSISTENT,
-                        message_id=str(row["id"]),
-                        type=row["event_type"],
-                        correlation_id=row["correlation_id"]
+                    routing_key = ROUTING_KEYS.get(
+                        row["event_type"], row["event_type"].lower()
                     )
-                    
+                    message = self._build_message(row)
+
                     try:
-                        # mandatory=True para que rebote si no hay cola
-                        await exchange.publish(message, routing_key=routing_key, mandatory=True)
+                        await exchange.publish(
+                            message, routing_key=routing_key, mandatory=True
+                        )
                         published_ids.append(row["id"])
-                        logger.info(f"Published outbox event {row['id']} ({row['event_type']})")
+                        logger.info(
+                            "Published outbox event id=%s event_id=%s type=%s",
+                            row["id"], row["event_id"], row["event_type"],
+                        )
                     except Exception as e:
-                        logger.warning(f"Failed to publish {row['id']} (no queue?): {e}")
+                        failed.append((row["id"], str(e)))
+                        logger.warning(
+                            "Failed to publish outbox event id=%s event_id=%s: %s",
+                            row["id"], row["event_id"], e,
+                        )
 
                 if published_ids:
-                    await conn.execute("""
+                    await conn.execute(
+                        """
                         UPDATE appointment_scheduling.outbox_event
-                        SET status = 'PUBLISHED', published_at = now()
+                        SET status = 'PUBLISHED',
+                            published_at = now(),
+                            updated_at = now(),
+                            attempts = 0,
+                            last_error = NULL
                         WHERE id = ANY($1)
-                    """, published_ids)
+                        """,
+                        published_ids,
+                    )
+
+                if failed:
+                    await self._mark_failed(conn, failed)
+
+    async def _mark_failed(self, conn, failed: list[tuple]) -> None:
+        """Mark each failed event, incrementing attempts and flipping to
+        FAILED after OUTBOX_MAX_ATTEMPTS. One UPDATE per row keeps the
+        per-event error message visible in ``last_error``."""
+        for event_id, reason in failed:
+            await conn.execute(
+                """
+                UPDATE appointment_scheduling.outbox_event
+                SET attempts = attempts + 1,
+                    last_error = $1,
+                    updated_at = now(),
+                    status = CASE
+                        WHEN attempts + 1 >= $2 THEN 'FAILED'
+                        ELSE 'PENDING'
+                    END
+                WHERE id = $3
+                """,
+                reason,
+                OUTBOX_MAX_ATTEMPTS,
+                event_id,
+            )
