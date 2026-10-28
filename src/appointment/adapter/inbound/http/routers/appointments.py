@@ -6,6 +6,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 
 from appointment.adapter.inbound.http.auth import AuthenticatedUser, require_roles
+from appointment.correlation import get_correlation_id
 from appointment.adapter.inbound.http.container import Container
 from appointment.adapter.inbound.http.idempotency import (
     InMemoryIdempotencyStore,
@@ -98,6 +99,7 @@ async def create(
             patient_id=body.patient_id,
             professional_id=body.professional_id,
             start=body.start,
+            correlation_id=get_correlation_id(),
         )
     )
     payload = response.model_dump(by_alias=True, mode="json")
@@ -175,7 +177,11 @@ async def cancel(
     appointment = await container.get_by_id.execute(appointment_id)
     _check_appointment_access(user, appointment)
     response = await container.cancel.execute(
-        CancelAppointmentCommand(appointment_id=appointment_id, reason=body.reason),
+        CancelAppointmentCommand(
+            appointment_id=appointment_id,
+            reason=body.reason,
+            correlation_id=get_correlation_id(),
+        ),
         actor_id=_user_uuid(user),
     )
     return response.model_dump(by_alias=True, mode="json")
@@ -198,6 +204,7 @@ async def reschedule(
         RescheduleAppointmentCommand(
             appointment_id=appointment_id,
             new_start=body.start,
+            correlation_id=get_correlation_id(),
         )
     )
     return response.model_dump(by_alias=True, mode="json")
@@ -220,6 +227,7 @@ async def update_status(
         UpdateAppointmentStatusCommand(
             appointment_id=appointment_id,
             status=body.status,
+            correlation_id=get_correlation_id(),
         )
     )
     return response.model_dump(by_alias=True, mode="json")

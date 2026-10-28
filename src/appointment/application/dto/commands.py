@@ -18,6 +18,7 @@ class CreateAppointmentCommand(BaseModel):
     professional_id: UUID
     start: datetime
     preconsultation_summary_id: UUID | None = None
+    correlation_id: str = ""
 
     @field_validator("patient_id", "professional_id")
     @classmethod
@@ -30,6 +31,7 @@ class CreateAppointmentCommand(BaseModel):
 class CancelAppointmentCommand(BaseModel):
     appointment_id: UUID
     reason: str
+    correlation_id: str = ""
 
     @field_validator("appointment_id")
     @classmethod
@@ -42,6 +44,7 @@ class CancelAppointmentCommand(BaseModel):
 class RescheduleAppointmentCommand(BaseModel):
     appointment_id: UUID
     new_start: datetime
+    correlation_id: str = ""
 
     @field_validator("appointment_id")
     @classmethod
@@ -54,6 +57,7 @@ class RescheduleAppointmentCommand(BaseModel):
 class UpdateAppointmentStatusCommand(BaseModel):
     appointment_id: UUID
     status: AppointmentStatus
+    correlation_id: str = ""
 
     @field_validator("appointment_id")
     @classmethod

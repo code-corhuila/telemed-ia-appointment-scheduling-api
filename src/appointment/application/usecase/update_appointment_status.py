@@ -33,6 +33,7 @@ class UpdateAppointmentStatusUseCaseImpl:
                         "professionalId": str(appointment.professional_id),
                         "completedAt": datetime.now(UTC).isoformat().replace("+00:00", "Z")
                     },
+                    correlation_id=cmd.correlation_id,
                     created_at=datetime.now(UTC)
                 )
             case AppointmentStatus.NO_SHOW:
