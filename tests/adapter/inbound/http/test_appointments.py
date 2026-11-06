@@ -1,3 +1,4 @@
+import json
 from datetime import UTC, datetime, timedelta
 
 from fastapi.testclient import TestClient
@@ -147,3 +148,31 @@ def test_create_patient_conflict_returns_409_with_code(client, make_token):
     
     assert response2.status_code == 409
     assert response2.json()["error"] == "PATIENT_SLOT_CONFLICT"
+
+def test_same_idempotency_key_with_different_body_returns_422(client, make_token):
+    patient = str(_uuid4())
+    prof1 = str(_uuid4())
+    prof2 = str(_uuid4())
+    token = make_token(patient, "PATIENT")
+    key = "idempotency-conflict-12345678"
+    headers = {**_auth(token), "Idempotency-Key": key}
+
+    body1 = {
+        "patientId": patient,
+        "professionalId": prof1,
+        "start": _future(24),
+    }
+    r1 = client.post("/api/appointments/", headers=headers, json=body1)
+    assert r1.status_code == 201
+
+    body2 = {
+        "patientId": patient,
+        "professionalId": prof2,
+        "start": _future(48),
+    }
+    r2 = client.post("/api/appointments/", headers=headers, json=body2)
+    assert r2.status_code == 422
+    # El envelope de error del proyecto puede usar "detail", "message" o "error".
+    # Verificamos la semántica (la clave mencionada) sin acoplarnos a la forma exacta.
+    body_text = json.dumps(r2.json())
+    assert "Idempotency-Key" in body_text
