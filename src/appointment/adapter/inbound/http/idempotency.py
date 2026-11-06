@@ -25,17 +25,29 @@ def validate_idempotency_key(value: str | None) -> str:
     return trimmed
 
 
+class IdempotencyConflict(Exception):
+    """Same key reused with a different request body (Anexo C)."""
+
+
 class InMemoryIdempotencyStore:
-    """Maps a key to a response body already produced."""
+    """Maps a key to (body_hash, response body)."""
 
     def __init__(self) -> None:
         self._lock = Lock()
-        self._store: dict[str, dict[str, Any]] = {}
+        self._store: dict[str, tuple[str, dict[str, Any]]] = {}
 
-    def get(self, key: str) -> dict[str, Any] | None:
+    def get(self, key: str, body_hash: str) -> dict[str, Any] | None:
         with self._lock:
-            return self._store.get(key)
+            cached = self._store.get(key)
+            if cached is None:
+                return None
+            cached_hash, cached_body = cached
+            if cached_hash != body_hash:
+                raise IdempotencyConflict(
+                    "Idempotency-Key was already used with a different request body"
+                )
+            return cached_body
 
-    def put(self, key: str, body: dict[str, Any]) -> None:
+    def put(self, key: str, body_hash: str, body: dict[str, Any]) -> None:
         with self._lock:
-            self._store[key] = body
+            self._store[key] = (body_hash, body)
