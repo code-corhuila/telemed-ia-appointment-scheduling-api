@@ -8,7 +8,10 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, s
 from appointment.adapter.inbound.http.auth import AuthenticatedUser, require_roles
 from appointment.correlation import get_correlation_id
 from appointment.adapter.inbound.http.container import Container
+import hashlib
+import json
 from appointment.adapter.inbound.http.idempotency import (
+    IdempotencyConflict,
     InMemoryIdempotencyStore,
     validate_idempotency_key,
 )
@@ -91,8 +94,17 @@ async def create(
             )
 
     store = _idempotency(request)
-    if (cached := store.get(key)) is not None:
-        return cached
+    body_hash = hashlib.sha256(
+        json.dumps(body.model_dump(mode="json"), sort_keys=True).encode()
+    ).hexdigest()
+    try:
+        if (cached := store.get(key, body_hash)) is not None:
+            return cached
+    except IdempotencyConflict as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
 
     response = await _container(request).create.execute(
         CreateAppointmentCommand(
@@ -103,7 +115,7 @@ async def create(
         )
     )
     payload = response.model_dump(by_alias=True, mode="json")
-    store.put(key, payload)
+    store.put(key, body_hash, payload)
     return payload
 
 
