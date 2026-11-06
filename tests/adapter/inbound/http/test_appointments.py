@@ -1,6 +1,14 @@
+import json
 from datetime import UTC, datetime, timedelta
 
 from fastapi.testclient import TestClient
+
+from uuid import uuid4 as _uuid4
+
+PATIENT_UUID = str(_uuid4())
+PROFESSIONAL_UUID = str(_uuid4())
+ADMIN_UUID = str(_uuid4())
+
 
 
 def _future(h: int) -> str:
@@ -12,46 +20,43 @@ def _auth(token: str) -> dict[str, str]:
 
 
 def test_create_appointment_returns_201(client: TestClient, make_token) -> None:
-    token = make_token("1", "PATIENT")
+    token = make_token(PATIENT_UUID, "PATIENT")
     response = client.post(
         "/api/appointments/",
         headers={**_auth(token), "Idempotency-Key": "test-key-12345678"},
         json={
-            "patientId": 1,
-            "professionalId": 2,
+            "patientId": PATIENT_UUID,
+            "professionalId": PROFESSIONAL_UUID,
             "start": _future(24),
-            "end": _future(25),
         },
     )
     assert response.status_code == 201
     body = response.json()
     assert body["status"] == "CONFIRMED"
-    assert body["patientId"] == 1
+    assert body["patientId"] == PATIENT_UUID
 
 
 def test_create_without_idempotency_key_returns_400(client: TestClient, make_token) -> None:
-    token = make_token("1", "PATIENT")
+    token = make_token(PATIENT_UUID, "PATIENT")
     response = client.post(
         "/api/appointments/",
         headers=_auth(token),
         json={
-            "patientId": 1,
-            "professionalId": 2,
+            "patientId": PATIENT_UUID,
+            "professionalId": PROFESSIONAL_UUID,
             "start": _future(24),
-            "end": _future(25),
         },
     )
     assert response.status_code == 400
 
 
 def test_create_is_idempotent(client: TestClient, make_token) -> None:
-    token = make_token("1", "PATIENT")
+    token = make_token(PATIENT_UUID, "PATIENT")
     headers = {**_auth(token), "Idempotency-Key": "same-key-12345678"}
     body = {
-        "patientId": 1,
-        "professionalId": 2,
+        "patientId": PATIENT_UUID,
+        "professionalId": PROFESSIONAL_UUID,
         "start": _future(24),
-        "end": _future(25),
     }
     first = client.post("/api/appointments/", headers=headers, json=body)
     second = client.post("/api/appointments/", headers=headers, json=body)
@@ -61,15 +66,14 @@ def test_create_is_idempotent(client: TestClient, make_token) -> None:
 
 
 def test_cancel_and_list(client: TestClient, make_token) -> None:
-    token = make_token("1", "PATIENT")
+    token = make_token(PATIENT_UUID, "PATIENT")
     created = client.post(
         "/api/appointments/",
         headers={**_auth(token), "Idempotency-Key": "cancel-test-12345678"},
         json={
-            "patientId": 1,
-            "professionalId": 2,
+            "patientId": PATIENT_UUID,
+            "professionalId": PROFESSIONAL_UUID,
             "start": _future(24),
-            "end": _future(25),
         },
     ).json()
 
@@ -82,7 +86,7 @@ def test_cancel_and_list(client: TestClient, make_token) -> None:
     assert cancelled.json()["status"] == "CANCELLED"
     assert cancelled.json()["cancellationReason"] == "no longer available"
 
-    listing = client.get("/api/appointments/patient/1", headers=_auth(token))
+    listing = client.get(f"/api/appointments/patient/{PATIENT_UUID}", headers=_auth(token))
     assert listing.status_code == 200
     body = listing.json()
     assert "data" in body and "meta" in body
@@ -90,7 +94,7 @@ def test_cancel_and_list(client: TestClient, make_token) -> None:
 
 
 def test_invalid_json_returns_400_envelope(client: TestClient, make_token) -> None:
-    token = make_token("1", "PATIENT")
+    token = make_token(PATIENT_UUID, "PATIENT")
     response = client.post(
         "/api/appointments/",
         headers={
@@ -110,3 +114,65 @@ def test_unknown_route_returns_404_with_envelope(client: TestClient) -> None:
     assert response.status_code == 404
     assert response.json()["error"] == "NOT_FOUND"
     assert "traceId" in response.json()
+
+def test_create_patient_conflict_returns_409_with_code(client, make_token):
+    patient_uuid = str(_uuid4())
+    prof1_uuid = str(_uuid4())
+    prof2_uuid = str(_uuid4())
+    token = make_token(patient_uuid, "PATIENT")
+    headers = {**_auth(token), "Idempotency-Key": "conflict-test-12345"}
+
+    # Primera cita
+    response1 = client.post(
+        "/api/appointments/",
+        headers=headers,
+        json={
+            "patientId": patient_uuid,
+            "professionalId": prof1_uuid,
+            "start": _future(24),
+        },
+    )
+    assert response1.status_code == 201
+
+    # Segunda cita, mismo paciente, distinto profesional, solapada
+    headers["Idempotency-Key"] = "conflict-test-67890"
+    response2 = client.post(
+        "/api/appointments/",
+        headers=headers,
+        json={
+            "patientId": patient_uuid,
+            "professionalId": prof2_uuid,
+            "start": _future(24.25),
+        },
+    )
+    
+    assert response2.status_code == 409
+    assert response2.json()["error"] == "PATIENT_SLOT_CONFLICT"
+
+def test_same_idempotency_key_with_different_body_returns_422(client, make_token):
+    patient = str(_uuid4())
+    prof1 = str(_uuid4())
+    prof2 = str(_uuid4())
+    token = make_token(patient, "PATIENT")
+    key = "idempotency-conflict-12345678"
+    headers = {**_auth(token), "Idempotency-Key": key}
+
+    body1 = {
+        "patientId": patient,
+        "professionalId": prof1,
+        "start": _future(24),
+    }
+    r1 = client.post("/api/appointments/", headers=headers, json=body1)
+    assert r1.status_code == 201
+
+    body2 = {
+        "patientId": patient,
+        "professionalId": prof2,
+        "start": _future(48),
+    }
+    r2 = client.post("/api/appointments/", headers=headers, json=body2)
+    assert r2.status_code == 422
+    # El envelope de error del proyecto puede usar "detail", "message" o "error".
+    # Verificamos la semántica (la clave mencionada) sin acoplarnos a la forma exacta.
+    body_text = json.dumps(r2.json())
+    assert "Idempotency-Key" in body_text

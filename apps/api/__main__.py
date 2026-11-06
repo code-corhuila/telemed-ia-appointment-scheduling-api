@@ -13,7 +13,6 @@ from fastapi import FastAPI
 from appointment.adapter.inbound.http.app import create_app
 from appointment.adapter.inbound.http.container import Container
 from appointment.adapter.inbound.http.idempotency import InMemoryIdempotencyStore
-from appointment.adapter.outbound.messaging.noop_publisher import NoOpEventPublisher
 from appointment.adapter.outbound.persistence.appointment_repository import (
     PostgresAppointmentRepository,
 )
@@ -26,6 +25,10 @@ from appointment.application.usecase.cancel_appointment import (
 from appointment.application.usecase.create_appointment import (
     CreateAppointmentUseCaseImpl,
 )
+from appointment.application.usecase.get_appointment import (
+    GetAppointmentUseCaseImpl,
+)
+from appointment.application.usecase.list_upcoming_reminders import ListUpcomingRemindersUseCaseImpl
 from appointment.application.usecase.list_appointments import (
     ListPatientAppointmentsUseCaseImpl,
     ListProfessionalAppointmentsUseCaseImpl,
@@ -37,6 +40,7 @@ from appointment.application.usecase.update_appointment_status import (
     UpdateAppointmentStatusUseCaseImpl,
 )
 from appointment.config.database import create_pool
+from appointment.adapter.outbound.messaging.outbox_poller import OutboxPoller
 from appointment.config.settings import get_settings
 
 
@@ -51,18 +55,34 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # without touching the composition root.
         _availability_repo = PostgresAvailabilityRepository(pool, settings.db_schema)
 
-        publisher = NoOpEventPublisher()
         app.state.container = Container(
-            create=CreateAppointmentUseCaseImpl(appointment_repo, publisher),
-            cancel=CancelAppointmentUseCaseImpl(appointment_repo, publisher),
-            reschedule=RescheduleAppointmentUseCaseImpl(appointment_repo, publisher),
-            update_status=UpdateAppointmentStatusUseCaseImpl(appointment_repo, publisher),
+            create=CreateAppointmentUseCaseImpl(appointment_repo),
+            cancel=CancelAppointmentUseCaseImpl(appointment_repo),
+            reschedule=RescheduleAppointmentUseCaseImpl(appointment_repo),
+            update_status=UpdateAppointmentStatusUseCaseImpl(appointment_repo),
             list_patient=ListPatientAppointmentsUseCaseImpl(appointment_repo),
             list_professional=ListProfessionalAppointmentsUseCaseImpl(appointment_repo),
+            get_by_id=GetAppointmentUseCaseImpl(appointment_repo),
+            list_reminders=ListUpcomingRemindersUseCaseImpl(appointment_repo),
         )
         app.state.idempotency = InMemoryIdempotencyStore()
+        
+        # Start Outbox Poller (resilient: don't crash the API if RabbitMQ is down)
+        try:
+            poller = OutboxPoller(pool, settings.rabbitmq_url)
+            await poller.start()
+            app.state.outbox_poller = poller
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(
+                f"Failed to start OutboxPoller (RabbitMQ might be down). "
+                f"The API will start but outbox events won't be published until the next restart. Error: {e}"
+            )
+
         yield
     finally:
+        if hasattr(app.state, 'outbox_poller'):
+            await app.state.outbox_poller.stop()
         await pool.close()
 
 
