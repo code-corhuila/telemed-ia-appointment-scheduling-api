@@ -67,17 +67,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         )
         app.state.idempotency = InMemoryIdempotencyStore()
         
-        # Start Outbox Poller (resilient: don't crash the API if RabbitMQ is down)
-        try:
-            poller = OutboxPoller(pool, settings.rabbitmq_url)
-            await poller.start()
-            app.state.outbox_poller = poller
-        except Exception as e:
-            import logging
-            logging.getLogger(__name__).error(
-                f"Failed to start OutboxPoller (RabbitMQ might be down). "
-                f"The API will start but outbox events won't be published until the next restart. Error: {e}"
-            )
+        # Start OutboxPoller. It does NOT raise if RabbitMQ is down:
+        # it spawns a reconnect task with backoff and resumes publishing
+        # as soon as the broker is reachable. The API lifecycle is
+        # decoupled from the broker lifecycle.
+        poller = OutboxPoller(pool, settings.rabbitmq_url)
+        await poller.start()
+        app.state.outbox_poller = poller
 
         yield
     finally:
