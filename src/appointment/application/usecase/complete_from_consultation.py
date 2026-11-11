@@ -16,7 +16,10 @@ class CompletionOutcome(StrEnum):
 
 class CompleteAppointmentFromConsultationUseCaseImpl:
     """CONFIRMED or RESCHEDULED -> COMPLETED; COMPLETED stays (a repeated event);
-    CANCELLED and NO_SHOW are left unchanged."""
+    CANCELLED and NO_SHOW are left unchanged.
+
+    DEC-008: the event's postSummaryId is stored on the appointment. A completed appointment
+    without one takes it from a repeated event; a stored one is never replaced."""
 
     def __init__(self, repository: AppointmentRepository) -> None:
         self._repository = repository
@@ -27,11 +30,15 @@ class CompleteAppointmentFromConsultationUseCaseImpl:
             raise AppointmentNotFound(f"appointment {cmd.appointment_id} not found")
 
         if appointment.status is AppointmentStatus.COMPLETED:
+            if appointment.post_summary_id is None and cmd.post_summary_id is not None:
+                appointment.post_summary_id = cmd.post_summary_id
+                await self._repository.update(appointment)
             return CompletionOutcome.ALREADY_COMPLETED
         if appointment.status in (AppointmentStatus.CANCELLED, AppointmentStatus.NO_SHOW):
             return CompletionOutcome.IGNORED
 
         appointment.mark_completed()
+        appointment.post_summary_id = cmd.post_summary_id
         await self._repository.update(
             appointment, outbox_event=appointment_completed_event(appointment, cmd.correlation_id)
         )
