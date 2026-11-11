@@ -47,6 +47,13 @@ from appointment.adapter.inbound.messaging.consultation_completed_consumer impor
 from appointment.application.usecase.complete_from_consultation import (
     CompleteAppointmentFromConsultationUseCaseImpl,
 )
+from appointment.adapter.inbound.messaging.preconsultation_summary_consumer import (
+    PreConsultationSummaryConsumer,
+    PreConsultationSummaryProcessor,
+)
+from appointment.application.usecase.link_preconsultation_summary import (
+    LinkPreconsultationSummaryUseCaseImpl,
+)
 from appointment.config.database import create_pool
 from appointment.adapter.outbound.messaging.outbox_poller import OutboxPoller
 from appointment.config.settings import get_settings
@@ -94,8 +101,20 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await consumer.start()
         app.state.consultation_completed_consumer = consumer
 
+        # DEC-009: PreConsultationSummaryGenerated links the summary to its appointment.
+        summary_consumer = PreConsultationSummaryConsumer(
+            settings.rabbitmq_url,
+            PreConsultationSummaryProcessor(
+                LinkPreconsultationSummaryUseCaseImpl(appointment_repo), asyncio.sleep
+            ),
+        )
+        await summary_consumer.start()
+        app.state.preconsultation_summary_consumer = summary_consumer
+
         yield
     finally:
+        if hasattr(app.state, 'preconsultation_summary_consumer'):
+            await app.state.preconsultation_summary_consumer.stop()
         if hasattr(app.state, 'consultation_completed_consumer'):
             await app.state.consultation_completed_consumer.stop()
         if hasattr(app.state, 'outbox_poller'):
