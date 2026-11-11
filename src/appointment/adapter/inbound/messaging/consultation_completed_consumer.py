@@ -5,15 +5,16 @@ routing key ``consultation-completed``; a dead-lettered message goes to
 ``appointment.consultation-completed.dlq``. The consumer reads identifiers only; the optional
 ``postSummaryId`` is stored on the appointment (appointment DEC-008).
 """
-import asyncio
 import json
 import logging
 from collections.abc import Awaitable, Callable
-from enum import StrEnum
 
-import aio_pika
-from aio_pika.abc import AbstractIncomingMessage
-
+from appointment.adapter.inbound.messaging.topic_queue_consumer import (
+    Decision,
+    MalformedMessage,
+    TopicQueueConsumer,
+    dead_letter_arguments,
+)
 from appointment.application.dto.commands import ConsultationCompletedCommand
 from appointment.application.usecase.complete_from_consultation import CompletionOutcome
 from appointment.domain.exception import AppointmentNotFound
@@ -27,25 +28,20 @@ DEAD_LETTER_QUEUE = "appointment.consultation-completed.dlq"
 EVENT_TYPE = "ConsultationCompleted"
 MAX_ATTEMPTS = 3
 BACKOFF_SECONDS = (3, 6)
-RECONNECT_INITIAL_SECONDS = 5
-RECONNECT_MAX_SECONDS = 60
 
-
-class MalformedMessage(ValueError):
-    """The message is not a ConsultationCompleted envelope."""
-
-
-class Decision(StrEnum):
-    ACK = "ACK"
-    DEAD_LETTER = "DEAD_LETTER"
+__all__ = [
+    "ConsultationCompletedConsumer",
+    "ConsultationCompletedProcessor",
+    "Decision",
+    "MalformedMessage",
+    "parse_consultation_completed",
+    "queue_arguments",
+]
 
 
 def queue_arguments() -> dict:
     """Rejected messages go, through the default exchange, to the DLQ."""
-    return {
-        "x-dead-letter-exchange": "",
-        "x-dead-letter-routing-key": DEAD_LETTER_QUEUE,
-    }
+    return dead_letter_arguments(DEAD_LETTER_QUEUE)
 
 
 def parse_consultation_completed(body: bytes) -> ConsultationCompletedCommand:
@@ -118,64 +114,16 @@ class ConsultationCompletedProcessor:
         return Decision.DEAD_LETTER  # unreachable: the loop always returns
 
 
-class ConsultationCompletedConsumer:
-    """AMQP wiring. Like the OutboxPoller, it never blocks the API start: it connects in the
-    background with exponential backoff, and aio-pika's robust connection restores the
-    consumer after a broker restart."""
+class ConsultationCompletedConsumer(TopicQueueConsumer):
+    """AMQP wiring of ``appointment.consultation-completed`` (see TopicQueueConsumer)."""
 
     def __init__(self, rabbit_url: str, processor: ConsultationCompletedProcessor) -> None:
-        self._rabbit_url = rabbit_url
-        self._processor = processor
-        self._connection = None
-        self._task: asyncio.Task | None = None
-        self._running = False
-
-    async def start(self) -> None:
-        self._running = True
-        self._task = asyncio.create_task(self._connect_with_retry())
-
-    async def stop(self) -> None:
-        self._running = False
-        if self._task is not None and not self._task.done():
-            self._task.cancel()
-            try:
-                await self._task
-            except asyncio.CancelledError:
-                pass
-        if self._connection is not None and not self._connection.is_closed:
-            await self._connection.close()
-
-    async def _connect_with_retry(self) -> None:
-        backoff = RECONNECT_INITIAL_SECONDS
-        while self._running:
-            try:
-                self._connection = await aio_pika.connect_robust(self._rabbit_url, timeout=5)
-                channel = await self._connection.channel()
-                await channel.set_qos(prefetch_count=1)
-                exchange = await channel.declare_exchange(
-                    CONSULTATION_EXCHANGE, aio_pika.ExchangeType.TOPIC, durable=True
-                )
-                await channel.declare_queue(DEAD_LETTER_QUEUE, durable=True)
-                queue = await channel.declare_queue(
-                    QUEUE, durable=True, arguments=queue_arguments()
-                )
-                await queue.bind(exchange, routing_key=ROUTING_KEY)
-                await queue.consume(self._on_message)
-                logger.info("ConsultationCompleted consumer listening on %s", QUEUE)
-                return
-            except Exception as e:
-                if self._connection is not None and not self._connection.is_closed:
-                    await self._connection.close()
-                logger.warning(
-                    "ConsultationCompleted consumer cannot reach RabbitMQ (retry in %ss): %s",
-                    backoff, e,
-                )
-                await asyncio.sleep(backoff)
-                backoff = min(backoff * 2, RECONNECT_MAX_SECONDS)
-
-    async def _on_message(self, message: AbstractIncomingMessage) -> None:
-        decision = await self._processor.process(message.body)
-        if decision is Decision.ACK:
-            await message.ack()
-        else:
-            await message.reject(requeue=False)
+        super().__init__(
+            rabbit_url,
+            processor,
+            exchange=CONSULTATION_EXCHANGE,
+            routing_key=ROUTING_KEY,
+            queue=QUEUE,
+            dead_letter_queue=DEAD_LETTER_QUEUE,
+            name=EVENT_TYPE,
+        )
