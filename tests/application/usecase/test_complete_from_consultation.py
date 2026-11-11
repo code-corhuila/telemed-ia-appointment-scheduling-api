@@ -18,7 +18,9 @@ PATIENT_ID = uuid4()
 PROFESSIONAL_ID = uuid4()
 
 
-async def _appointment(repo: InMemoryAppointmentRepository, status: AppointmentStatus) -> Appointment:
+async def _appointment(
+    repo: InMemoryAppointmentRepository, status: AppointmentStatus
+) -> Appointment:
     now = datetime.now(UTC)
     appointment = Appointment.reconstitute(
         id=uuid4(),
@@ -48,7 +50,8 @@ async def test_completes_an_active_appointment_and_publishes_appointment_complet
     repo = InMemoryAppointmentRepository()
     appointment = await _appointment(repo, status)
 
-    outcome = await CompleteAppointmentFromConsultationUseCaseImpl(repo).execute(_command(appointment.id))
+    use_case = CompleteAppointmentFromConsultationUseCaseImpl(repo)
+    outcome = await use_case.execute(_command(appointment.id))
 
     assert outcome is CompletionOutcome.COMPLETED
     assert (await repo.find_by_id(appointment.id)).status is AppointmentStatus.COMPLETED
@@ -65,7 +68,8 @@ async def test_a_repeated_event_changes_nothing() -> None:
     repo = InMemoryAppointmentRepository()
     appointment = await _appointment(repo, AppointmentStatus.COMPLETED)
 
-    outcome = await CompleteAppointmentFromConsultationUseCaseImpl(repo).execute(_command(appointment.id))
+    use_case = CompleteAppointmentFromConsultationUseCaseImpl(repo)
+    outcome = await use_case.execute(_command(appointment.id))
 
     assert outcome is CompletionOutcome.ALREADY_COMPLETED
     assert repo.outbox_events == []
@@ -76,7 +80,8 @@ async def test_leaves_a_cancelled_or_missed_appointment_unchanged(status) -> Non
     repo = InMemoryAppointmentRepository()
     appointment = await _appointment(repo, status)
 
-    outcome = await CompleteAppointmentFromConsultationUseCaseImpl(repo).execute(_command(appointment.id))
+    use_case = CompleteAppointmentFromConsultationUseCaseImpl(repo)
+    outcome = await use_case.execute(_command(appointment.id))
 
     assert outcome is CompletionOutcome.IGNORED
     assert (await repo.find_by_id(appointment.id)).status is status

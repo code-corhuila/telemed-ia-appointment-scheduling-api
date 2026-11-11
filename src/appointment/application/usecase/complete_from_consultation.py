@@ -3,6 +3,9 @@ from enum import StrEnum
 
 from appointment.application.dto.commands import ConsultationCompletedCommand
 from appointment.application.ports.outbound.appointment_repository import AppointmentRepository
+from appointment.application.usecase._events import appointment_completed_event
+from appointment.domain.exception import AppointmentNotFound
+from appointment.domain.model.appointment_status import AppointmentStatus
 
 
 class CompletionOutcome(StrEnum):
@@ -12,8 +15,24 @@ class CompletionOutcome(StrEnum):
 
 
 class CompleteAppointmentFromConsultationUseCaseImpl:
+    """CONFIRMED or RESCHEDULED -> COMPLETED; COMPLETED stays (a repeated event);
+    CANCELLED and NO_SHOW are left unchanged."""
+
     def __init__(self, repository: AppointmentRepository) -> None:
         self._repository = repository
 
     async def execute(self, cmd: ConsultationCompletedCommand) -> CompletionOutcome:
-        raise NotImplementedError
+        appointment = await self._repository.find_by_id(cmd.appointment_id)
+        if appointment is None:
+            raise AppointmentNotFound(f"appointment {cmd.appointment_id} not found")
+
+        if appointment.status is AppointmentStatus.COMPLETED:
+            return CompletionOutcome.ALREADY_COMPLETED
+        if appointment.status in (AppointmentStatus.CANCELLED, AppointmentStatus.NO_SHOW):
+            return CompletionOutcome.IGNORED
+
+        appointment.mark_completed()
+        await self._repository.update(
+            appointment, outbox_event=appointment_completed_event(appointment, cmd.correlation_id)
+        )
+        return CompletionOutcome.COMPLETED

@@ -114,7 +114,7 @@ The OpenAPI contract also lists `/preconsultation` endpoints. Those belong to `a
 ## Known limitations
 
 - **Idempotency store is in-process.** The `Idempotency-Key` responses live in an in-memory dictionary. Horizontal scaling requires a shared store (Postgres table `idempotency_key`, following the `patient-management` pattern). Tracked as low-complexity debt.
-- **Event publisher is a no-op.** Per ADR-011 the message broker (RabbitMQ) is still Proposed. The `NoOpEventPublisher` logs each event and does nothing else. Replacing it with a RabbitMQ adapter requires no changes to use cases.
+- **Messaging.** Appointment events go through the `outbox_event` table and the `OutboxPoller` to `appointments.events`. The service consumes `ConsultationCompleted` from `consultation.events` (queue `appointment.consultation-completed`, DLQ `appointment.consultation-completed.dlq`, DEC-007): a `CONFIRMED` or `RESCHEDULED` appointment becomes `COMPLETED` and publishes `AppointmentCompleted`; a repeated event changes nothing; a cancelled or missed appointment is left unchanged with a warning; an unknown appointment or a malformed message goes to the DLQ at once, and any other failure after 3 attempts.
 - **Slot computation is not implemented yet.** The `PostgresAvailabilityRepository` is wired but not consumed by any endpoint. A future endpoint will compute bookable slots from recurring availability plus existing appointments.
 - **No integration tests against a real database in CI.** They exist locally but require `TEST_DATABASE_URL`. Adding them to CI is a follow-up.
 

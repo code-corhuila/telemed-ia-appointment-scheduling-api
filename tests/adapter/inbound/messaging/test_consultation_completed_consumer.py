@@ -109,9 +109,12 @@ async def test_acknowledges_every_outcome(outcome) -> None:
 async def test_logs_a_warning_when_the_appointment_is_left_unchanged(caplog) -> None:
     caplog.set_level(logging.WARNING)
 
-    await ConsultationCompletedProcessor(FakeUseCase(CompletionOutcome.IGNORED), RecordingSleep()).process(_body())
+    use_case = FakeUseCase(CompletionOutcome.IGNORED)
+    processor = ConsultationCompletedProcessor(use_case, RecordingSleep())
+    await processor.process(_body())
 
-    assert any(APPOINTMENT_ID in r.getMessage() and "corr-1" in r.getMessage() for r in caplog.records)
+    messages = [r.getMessage() for r in caplog.records]
+    assert any(APPOINTMENT_ID in m and "corr-1" in m for m in messages)
 
 
 async def test_dead_letters_a_malformed_message_without_calling_the_use_case() -> None:
@@ -137,7 +140,9 @@ async def test_dead_letters_an_unknown_appointment_without_retrying() -> None:
 
 
 async def test_retries_a_transient_failure_with_backoff() -> None:
-    use_case = FakeUseCase(RuntimeError("db down"), RuntimeError("db down"), CompletionOutcome.COMPLETED)
+    use_case = FakeUseCase(
+        RuntimeError("db down"), RuntimeError("db down"), CompletionOutcome.COMPLETED
+    )
     sleep = RecordingSleep()
 
     decision = await ConsultationCompletedProcessor(use_case, sleep).process(_body())

@@ -4,6 +4,7 @@ Builds the real container, manages the asyncpg pool through FastAPI's
 lifespan, and starts uvicorn.
 """
 
+import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -38,6 +39,13 @@ from appointment.application.usecase.reschedule_appointment import (
 )
 from appointment.application.usecase.update_appointment_status import (
     UpdateAppointmentStatusUseCaseImpl,
+)
+from appointment.adapter.inbound.messaging.consultation_completed_consumer import (
+    ConsultationCompletedConsumer,
+    ConsultationCompletedProcessor,
+)
+from appointment.application.usecase.complete_from_consultation import (
+    CompleteAppointmentFromConsultationUseCaseImpl,
 )
 from appointment.config.database import create_pool
 from appointment.adapter.outbound.messaging.outbox_poller import OutboxPoller
@@ -75,8 +83,21 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await poller.start()
         app.state.outbox_poller = poller
 
+        # DEC-007: ConsultationCompleted moves the appointment to COMPLETED. Same
+        # resilience as the poller: it connects in the background.
+        consumer = ConsultationCompletedConsumer(
+            settings.rabbitmq_url,
+            ConsultationCompletedProcessor(
+                CompleteAppointmentFromConsultationUseCaseImpl(appointment_repo), asyncio.sleep
+            ),
+        )
+        await consumer.start()
+        app.state.consultation_completed_consumer = consumer
+
         yield
     finally:
+        if hasattr(app.state, 'consultation_completed_consumer'):
+            await app.state.consultation_completed_consumer.stop()
         if hasattr(app.state, 'outbox_poller'):
             await app.state.outbox_poller.stop()
         await pool.close()
