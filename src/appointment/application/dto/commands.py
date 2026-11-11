@@ -65,3 +65,18 @@ class UpdateAppointmentStatusCommand(BaseModel):
         if v.int == 0:
             raise ValueError("uuid cannot be nil")
         return v
+
+
+class ConsultationCompletedCommand(BaseModel):
+    """ConsultationCompleted received from consultation.events (DEC-007)."""
+
+    appointment_id: UUID
+    consultation_id: UUID
+    correlation_id: str = ""
+
+    @field_validator("appointment_id", "consultation_id")
+    @classmethod
+    def _non_nil_uuid(cls, v: UUID) -> UUID:
+        if v.int == 0:
+            raise ValueError("uuid cannot be nil")
+        return v
