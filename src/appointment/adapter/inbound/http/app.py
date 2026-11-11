@@ -33,6 +33,8 @@ def create_app(
         redoc_url=None,
         openapi_url="/openapi.json" if docs_enabled else None,
         lifespan=lifespan,
+        # Behind the gateway a 307 would point to the internal host.
+        redirect_slashes=False,
     )
 
     app.add_middleware(CorrelationMiddleware)
