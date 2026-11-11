@@ -72,6 +72,7 @@ class ConsultationCompletedCommand(BaseModel):
 
     appointment_id: UUID
     consultation_id: UUID
+    post_summary_id: UUID | None = None
     correlation_id: str = ""
 
     @field_validator("appointment_id", "consultation_id")
