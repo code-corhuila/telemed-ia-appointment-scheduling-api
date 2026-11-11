@@ -2,7 +2,8 @@
 
 Queue ``appointment.consultation-completed`` is bound to ``consultation.events`` with the
 routing key ``consultation-completed``; a dead-lettered message goes to
-``appointment.consultation-completed.dlq``. The consumer reads identifiers only.
+``appointment.consultation-completed.dlq``. The consumer reads identifiers only; the optional
+``postSummaryId`` is stored on the appointment (appointment DEC-008).
 """
 import asyncio
 import json
@@ -58,6 +59,7 @@ def parse_consultation_completed(body: bytes) -> ConsultationCompletedCommand:
         return ConsultationCompletedCommand(
             appointment_id=payload["appointmentId"],
             consultation_id=payload["consultationId"],
+            post_summary_id=payload.get("postSummaryId"),
             correlation_id=str(envelope.get("correlationId") or ""),
         )
     except MalformedMessage:

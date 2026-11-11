@@ -39,9 +39,12 @@ async def _appointment(
     return appointment
 
 
-def _command(appointment_id) -> ConsultationCompletedCommand:
+def _command(appointment_id, post_summary_id=None) -> ConsultationCompletedCommand:
     return ConsultationCompletedCommand(
-        appointment_id=appointment_id, consultation_id=uuid4(), correlation_id="corr-1"
+        appointment_id=appointment_id,
+        consultation_id=uuid4(),
+        post_summary_id=post_summary_id,
+        correlation_id="corr-1",
     )
 
 
@@ -93,3 +96,50 @@ async def test_an_unknown_appointment_is_an_error() -> None:
 
     with pytest.raises(AppointmentNotFound):
         await CompleteAppointmentFromConsultationUseCaseImpl(repo).execute(_command(uuid4()))
+
+
+async def test_completing_stores_the_post_summary_id() -> None:
+    repo = InMemoryAppointmentRepository()
+    appointment = await _appointment(repo, AppointmentStatus.CONFIRMED)
+    post_summary_id = uuid4()
+
+    use_case = CompleteAppointmentFromConsultationUseCaseImpl(repo)
+    await use_case.execute(_command(appointment.id, post_summary_id))
+
+    assert (await repo.find_by_id(appointment.id)).post_summary_id == post_summary_id
+
+
+async def test_a_completed_appointment_without_summary_takes_it_from_a_repeated_event() -> None:
+    repo = InMemoryAppointmentRepository()
+    appointment = await _appointment(repo, AppointmentStatus.COMPLETED)
+    post_summary_id = uuid4()
+
+    use_case = CompleteAppointmentFromConsultationUseCaseImpl(repo)
+    outcome = await use_case.execute(_command(appointment.id, post_summary_id))
+
+    assert outcome is CompletionOutcome.ALREADY_COMPLETED
+    assert (await repo.find_by_id(appointment.id)).post_summary_id == post_summary_id
+    assert repo.outbox_events == []
+
+
+async def test_a_repeated_event_does_not_replace_a_stored_summary() -> None:
+    repo = InMemoryAppointmentRepository()
+    appointment = await _appointment(repo, AppointmentStatus.COMPLETED)
+    stored = uuid4()
+    appointment.post_summary_id = stored
+
+    use_case = CompleteAppointmentFromConsultationUseCaseImpl(repo)
+    await use_case.execute(_command(appointment.id, uuid4()))
+
+    assert (await repo.find_by_id(appointment.id)).post_summary_id == stored
+
+
+async def test_an_event_without_summary_completes_as_before() -> None:
+    repo = InMemoryAppointmentRepository()
+    appointment = await _appointment(repo, AppointmentStatus.CONFIRMED)
+
+    use_case = CompleteAppointmentFromConsultationUseCaseImpl(repo)
+    outcome = await use_case.execute(_command(appointment.id))
+
+    assert outcome is CompletionOutcome.COMPLETED
+    assert (await repo.find_by_id(appointment.id)).post_summary_id is None
