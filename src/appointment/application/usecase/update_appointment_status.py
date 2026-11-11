@@ -1,14 +1,11 @@
 """Update the status of an appointment."""
-from datetime import UTC, datetime
-from uuid import uuid4
-
 from appointment.application.dto.commands import UpdateAppointmentStatusCommand
 from appointment.application.dto.responses import AppointmentResponse
 from appointment.application.ports.outbound.appointment_repository import AppointmentRepository
+from appointment.application.usecase._events import appointment_completed_event
 from appointment.application.usecase._mappers import to_response
 from appointment.domain.exception import AppointmentNotFound, InvalidStatusTransition
 from appointment.domain.model.appointment_status import AppointmentStatus
-from appointment.domain.model.outbox_event import OutboxEvent
 
 
 class UpdateAppointmentStatusUseCaseImpl:
@@ -24,18 +21,7 @@ class UpdateAppointmentStatusUseCaseImpl:
         match cmd.status:
             case AppointmentStatus.COMPLETED:
                 appointment.mark_completed()
-                event = OutboxEvent(
-                    id=str(uuid4()),
-                    event_type="AppointmentCompleted",
-                    payload={
-                        "appointmentId": str(appointment.id),
-                        "patientId": str(appointment.patient_id),
-                        "professionalId": str(appointment.professional_id),
-                        "completedAt": datetime.now(UTC).isoformat().replace("+00:00", "Z")
-                    },
-                    correlation_id=cmd.correlation_id,
-                    created_at=datetime.now(UTC)
-                )
+                event = appointment_completed_event(appointment, cmd.correlation_id)
             case AppointmentStatus.NO_SHOW:
                 appointment.mark_no_show()
             case AppointmentStatus.CANCELLED:
