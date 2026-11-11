@@ -61,6 +61,26 @@ class RecordingSleep:
         self.delays.append(seconds)
 
 
+def test_parses_the_post_summary_id() -> None:
+    post_summary_id = str(uuid4())
+    payload = json.loads(_body())["payload"] | {"postSummaryId": post_summary_id}
+
+    cmd = parse_consultation_completed(_body(payload=payload))
+
+    assert str(cmd.post_summary_id) == post_summary_id
+
+
+def test_an_event_without_post_summary_id_still_parses() -> None:
+    assert parse_consultation_completed(_body()).post_summary_id is None
+
+
+def test_rejects_a_post_summary_id_that_is_not_a_uuid() -> None:
+    payload = json.loads(_body())["payload"] | {"postSummaryId": "not-a-uuid"}
+
+    with pytest.raises(MalformedMessage):
+        parse_consultation_completed(_body(payload=payload))
+
+
 def test_the_queue_dead_letters_to_its_own_dlq() -> None:
     assert queue_arguments() == {
         "x-dead-letter-exchange": "",
