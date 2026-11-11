@@ -81,3 +81,19 @@ class ConsultationCompletedCommand(BaseModel):
         if v.int == 0:
             raise ValueError("uuid cannot be nil")
         return v
+
+
+class PreConsultationSummaryGeneratedCommand(BaseModel):
+    """PreConsultationSummaryGenerated received from agent.events (DEC-009)."""
+
+    appointment_id: UUID
+    summary_id: UUID
+    patient_id: UUID
+    correlation_id: str = ""
+
+    @field_validator("appointment_id", "summary_id", "patient_id")
+    @classmethod
+    def _non_nil_uuid(cls, v: UUID) -> UUID:
+        if v.int == 0:
+            raise ValueError("uuid cannot be nil")
+        return v
