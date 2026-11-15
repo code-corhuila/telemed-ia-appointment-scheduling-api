@@ -7,55 +7,48 @@ the events. This module defines the contract the application relies on.
 
 from dataclasses import dataclass
 from datetime import datetime
+from uuid import UUID
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True)
 class AppointmentCreated:
-    appointment_id: int
-    patient_id: int
-    professional_id: int
-    start: datetime
+    appointment_id: UUID
+    patient_id: UUID
+    professional_id: UUID
     occurred_at: datetime
 
-    @property
-    def name(self) -> str:
-        return "AppointmentCreated"
+
+@dataclass(frozen=True)
+class AppointmentCancelled:
+    appointment_id: UUID
+    patient_id: UUID
+    professional_id: UUID
+    cancelled_by: UUID
+    occurred_at: datetime
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True)
 class AppointmentRescheduled:
-    appointment_id: int
-    patient_id: int
-    professional_id: int
+    appointment_id: UUID
+    patient_id: UUID
+    professional_id: UUID
     previous_start: datetime
     new_start: datetime
     occurred_at: datetime
 
-    @property
-    def name(self) -> str:
-        return "AppointmentRescheduled"
 
-
-@dataclass(frozen=True, slots=True)
-class AppointmentCancelled:
-    appointment_id: int
-    patient_id: int
-    professional_id: int
-    cancelled_by: str
-    occurred_at: datetime
-
-    @property
-    def name(self) -> str:
-        return "AppointmentCancelled"
-
-
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True)
 class AppointmentCompleted:
-    appointment_id: int
-    patient_id: int
-    professional_id: int
+    appointment_id: UUID
+    patient_id: UUID
+    professional_id: UUID
     occurred_at: datetime
 
-    @property
-    def name(self) -> str:
-        return "AppointmentCompleted"
+
+@dataclass(frozen=True)
+class AppointmentStatusChanged:
+    appointment_id: UUID
+    patient_id: UUID
+    professional_id: UUID
+    new_status: str
+    occurred_at: datetime
