@@ -4,6 +4,7 @@ Builds the real container, manages the asyncpg pool through FastAPI's
 lifespan, and starts uvicorn.
 """
 
+import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -13,7 +14,6 @@ from fastapi import FastAPI
 from appointment.adapter.inbound.http.app import create_app
 from appointment.adapter.inbound.http.container import Container
 from appointment.adapter.inbound.http.idempotency import InMemoryIdempotencyStore
-from appointment.adapter.outbound.messaging.noop_publisher import NoOpEventPublisher
 from appointment.adapter.outbound.persistence.appointment_repository import (
     PostgresAppointmentRepository,
 )
@@ -26,6 +26,10 @@ from appointment.application.usecase.cancel_appointment import (
 from appointment.application.usecase.create_appointment import (
     CreateAppointmentUseCaseImpl,
 )
+from appointment.application.usecase.get_appointment import (
+    GetAppointmentUseCaseImpl,
+)
+from appointment.application.usecase.list_upcoming_reminders import ListUpcomingRemindersUseCaseImpl
 from appointment.application.usecase.list_appointments import (
     ListPatientAppointmentsUseCaseImpl,
     ListProfessionalAppointmentsUseCaseImpl,
@@ -36,7 +40,22 @@ from appointment.application.usecase.reschedule_appointment import (
 from appointment.application.usecase.update_appointment_status import (
     UpdateAppointmentStatusUseCaseImpl,
 )
+from appointment.adapter.inbound.messaging.consultation_completed_consumer import (
+    ConsultationCompletedConsumer,
+    ConsultationCompletedProcessor,
+)
+from appointment.application.usecase.complete_from_consultation import (
+    CompleteAppointmentFromConsultationUseCaseImpl,
+)
+from appointment.adapter.inbound.messaging.preconsultation_summary_consumer import (
+    PreConsultationSummaryConsumer,
+    PreConsultationSummaryProcessor,
+)
+from appointment.application.usecase.link_preconsultation_summary import (
+    LinkPreconsultationSummaryUseCaseImpl,
+)
 from appointment.config.database import create_pool
+from appointment.adapter.outbound.messaging.outbox_poller import OutboxPoller
 from appointment.config.settings import get_settings
 
 
@@ -51,18 +70,55 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # without touching the composition root.
         _availability_repo = PostgresAvailabilityRepository(pool, settings.db_schema)
 
-        publisher = NoOpEventPublisher()
         app.state.container = Container(
-            create=CreateAppointmentUseCaseImpl(appointment_repo, publisher),
-            cancel=CancelAppointmentUseCaseImpl(appointment_repo, publisher),
-            reschedule=RescheduleAppointmentUseCaseImpl(appointment_repo, publisher),
-            update_status=UpdateAppointmentStatusUseCaseImpl(appointment_repo, publisher),
+            create=CreateAppointmentUseCaseImpl(appointment_repo),
+            cancel=CancelAppointmentUseCaseImpl(appointment_repo),
+            reschedule=RescheduleAppointmentUseCaseImpl(appointment_repo),
+            update_status=UpdateAppointmentStatusUseCaseImpl(appointment_repo),
             list_patient=ListPatientAppointmentsUseCaseImpl(appointment_repo),
             list_professional=ListProfessionalAppointmentsUseCaseImpl(appointment_repo),
+            get_by_id=GetAppointmentUseCaseImpl(appointment_repo),
+            list_reminders=ListUpcomingRemindersUseCaseImpl(appointment_repo),
         )
         app.state.idempotency = InMemoryIdempotencyStore()
+        
+        # Start OutboxPoller. It does NOT raise if RabbitMQ is down:
+        # it spawns a reconnect task with backoff and resumes publishing
+        # as soon as the broker is reachable. The API lifecycle is
+        # decoupled from the broker lifecycle.
+        poller = OutboxPoller(pool, settings.rabbitmq_url)
+        await poller.start()
+        app.state.outbox_poller = poller
+
+        # DEC-007: ConsultationCompleted moves the appointment to COMPLETED. Same
+        # resilience as the poller: it connects in the background.
+        consumer = ConsultationCompletedConsumer(
+            settings.rabbitmq_url,
+            ConsultationCompletedProcessor(
+                CompleteAppointmentFromConsultationUseCaseImpl(appointment_repo), asyncio.sleep
+            ),
+        )
+        await consumer.start()
+        app.state.consultation_completed_consumer = consumer
+
+        # DEC-009: PreConsultationSummaryGenerated links the summary to its appointment.
+        summary_consumer = PreConsultationSummaryConsumer(
+            settings.rabbitmq_url,
+            PreConsultationSummaryProcessor(
+                LinkPreconsultationSummaryUseCaseImpl(appointment_repo), asyncio.sleep
+            ),
+        )
+        await summary_consumer.start()
+        app.state.preconsultation_summary_consumer = summary_consumer
+
         yield
     finally:
+        if hasattr(app.state, 'preconsultation_summary_consumer'):
+            await app.state.preconsultation_summary_consumer.stop()
+        if hasattr(app.state, 'consultation_completed_consumer'):
+            await app.state.consultation_completed_consumer.stop()
+        if hasattr(app.state, 'outbox_poller'):
+            await app.state.outbox_poller.stop()
         await pool.close()
 
 

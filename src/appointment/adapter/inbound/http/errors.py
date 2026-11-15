@@ -21,6 +21,7 @@ from appointment.domain.exception import (
     DomainException,
     InvalidStatusTransition,
     SlotUnavailable,
+    PatientSlotUnavailable,
     UnauthorizedOperation,
 )
 
@@ -48,6 +49,8 @@ def _status_and_code(exc: Exception) -> tuple[int, str]:
         return 422, "INVALID_STATUS_TRANSITION"
     if isinstance(exc, SlotUnavailable):
         return 409, "SLOT_UNAVAILABLE"
+    if isinstance(exc, PatientSlotUnavailable):
+        return 409, "PATIENT_SLOT_CONFLICT"
     if isinstance(exc, UnauthorizedOperation):
         return 403, "FORBIDDEN"
     if isinstance(exc, DomainException):

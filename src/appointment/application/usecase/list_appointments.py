@@ -1,5 +1,7 @@
 """Paginated listings for patients and professionals (norm 5.3.6)."""
 
+from uuid import UUID
+
 from appointment.application.dto.pagination import (
     PaginatedResponse,
     PaginationQuery,
@@ -17,7 +19,7 @@ class ListPatientAppointmentsUseCaseImpl:
 
     async def execute(
         self,
-        patient_id: int,
+        patient_id: UUID,
         query: PaginationQuery,
     ) -> PaginatedResponse[AppointmentResponse]:
         offset = (query.page - 1) * query.limit
@@ -35,7 +37,7 @@ class ListProfessionalAppointmentsUseCaseImpl:
 
     async def execute(
         self,
-        professional_id: int,
+        professional_id: UUID,
         query: PaginationQuery,
     ) -> PaginatedResponse[AppointmentResponse]:
         offset = (query.page - 1) * query.limit
