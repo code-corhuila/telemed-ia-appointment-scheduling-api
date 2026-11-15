@@ -8,6 +8,13 @@ services:
     image: telemed-ia-appointment-scheduling-api:local
     container_name: appointment-scheduling-api
     restart: unless-stopped
+    healthcheck:
+      # The slim Python image has no curl or wget: the probe uses the standard library.
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
     environment:
       RABBITMQ_URL: ${RABBITMQ_URL:-amqp://guest:guest@rabbitmq:5672/}
       ENVIRONMENT: development
